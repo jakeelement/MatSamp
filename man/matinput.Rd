@@ -2,7 +2,7 @@
 % Please edit documentation in R/matinput.R
 \name{matinput}
 \alias{matinput}
-\title{Launch the MatSamp data entry app}
+\title{Launch the MatSamp multi-level data entry app}
 \usage{
 matinput()
 }
@@ -10,6 +10,6 @@ matinput()
 A Shiny app launched in the current R session.
 }
 \description{
-Starts a Shiny app for entering sampling data with fields for date,
-LFA, organization, and measurement.
+Starts a Shiny app for entering hierarchical sampling data at three levels:
+TRIP, STRING#, and SAMPLE.
 }
