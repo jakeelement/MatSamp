@@ -4,6 +4,7 @@
 #' LFA, organization, and measurement.
 #'
 #' @return A Shiny app launched in the current R session.
+#' @import shiny
 #' @export
 matinput <- function() {
   shiny::runApp(
