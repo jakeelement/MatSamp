@@ -1,7 +1,7 @@
-#' Launch the MatSamp data entry app
+#' Launch the MatSamp multi-level data entry app
 #'
-#' Starts a Shiny app for entering sampling data with fields for date,
-#' LFA, organization, and measurement.
+#' Starts a Shiny app for entering hierarchical sampling data at three levels:
+#' TRIP, STRING#, and SAMPLE.
 #'
 #' @return A Shiny app launched in the current R session.
 #' @import shiny
@@ -10,19 +10,187 @@ matinput <- function() {
   shiny::runApp(
     shiny::shinyApp(
       ui = shiny::fluidPage(
-        shiny::titlePanel("MatSamp Data Entry"),
+        shiny::titlePanel("CLRN SOM50 AT-SEA SAMPLE DATA FORM"),
+
+        shiny::h3("TRIP INFORMATION"),
         shiny::fluidRow(
           shiny::column(
-            width = 6,
-            shiny::dateInput("date", "Date"),
-            shiny::textInput("lfa", "LFA"),
-            shiny::textInput("organization", "Organization"),
-            shiny::numericInput("measurement", "Measurement", value = NA)
+            width = 3,
+            shiny::textInput("trip_id", "TRIPID")
+          ),
+          shiny::column(
+            width = 3,
+            shiny::textInput("trip_org", "ORG.")
+          ),
+          shiny::column(
+            width = 3,
+            shiny::dateInput("trip_date", "DATE")
+          ),
+          shiny::column(
+            width = 3,
+            shiny::textInput("trip_port", "PORT")
           )
-        )
+        ),
+        shiny::fluidRow(
+          shiny::column(
+            width = 3,
+            shiny::textInput("trip_lfa", "LFA")
+          ),
+          shiny::column(
+            width = 6,
+            shiny::textInput("trip_sampler", "SAMPLER")
+          ),
+          shiny::column(
+            width = 3,
+            shiny::actionButton("save_trip", "Save/Update Trip", class = "btn-primary")
+          )
+        ),
+
+        shiny::tags$hr(),
+        shiny::h3("LOCATION INFORMATION (STRING#)"),
+        shiny::fluidRow(
+          shiny::column(
+            width = 3,
+            shiny::numericInput("string_no", "STRING #", value = NA, min = 1, step = 1)
+          ),
+          shiny::column(
+            width = 3,
+            shiny::textInput("lat", "LAT (DDMM.MM)")
+          ),
+          shiny::column(
+            width = 3,
+            shiny::textInput("long", "LONG (DDMM.MM)")
+          ),
+          shiny::column(
+            width = 3,
+            shiny::textInput("grid", "GRID")
+          )
+        ),
+        shiny::fluidRow(
+          shiny::column(
+            width = 3,
+            shiny::numericInput("depth", "DEPTH (FM)", value = NA)
+          ),
+          shiny::column(
+            width = 3,
+            shiny::actionButton("save_string", "Save String", class = "btn-primary")
+          )
+        ),
+
+        shiny::tags$hr(),
+        shiny::h3("SAMPLE INFORMATION"),
+        shiny::fluidRow(
+          shiny::column(
+            width = 2,
+            shiny::numericInput("sample_string_no", "STRING #", value = NA, min = 1, step = 1)
+          ),
+          shiny::column(
+            width = 2,
+            shiny::numericInput("lobster_no", "LOBSTER #", value = NA, min = 1, step = 1)
+          ),
+          shiny::column(
+            width = 2,
+            shiny::numericInput("length", "LENGTH", value = NA)
+          ),
+          shiny::column(
+            width = 2,
+            shiny::textInput("hardness", "HARDNESS")
+          ),
+          shiny::column(
+            width = 2,
+            shiny::textInput("egg", "EGG")
+          ),
+          shiny::column(
+            width = 2,
+            shiny::textInput("pleopod", "PLEOPOD")
+          )
+        ),
+        shiny::fluidRow(
+          shiny::column(
+            width = 3,
+            shiny::textInput("ovary", "OVARY")
+          ),
+          shiny::column(
+            width = 7,
+            shiny::textInput("comments", "COMMENTS")
+          ),
+          shiny::column(
+            width = 2,
+            shiny::actionButton("save_sample", "Save Sample", class = "btn-primary")
+          )
+        ),
+
+        shiny::tags$hr(),
+        shiny::h4("Current Trip"),
+        shiny::tableOutput("trip_table"),
+        shiny::h4("Current Strings"),
+        shiny::tableOutput("string_table"),
+        shiny::h4("Current Samples"),
+        shiny::tableOutput("sample_table")
       ),
       server = function(input, output, session) {
-        invisible(NULL)
+        rv <- shiny::reactiveValues(
+          trip = NULL,
+          strings = data.frame(),
+          samples = data.frame()
+        )
+
+        shiny::observeEvent(input$save_trip, {
+          rv$trip <- data.frame(
+            trip_id = input$trip_id,
+            org = input$trip_org,
+            date = as.character(input$trip_date),
+            port = input$trip_port,
+            lfa = input$trip_lfa,
+            sampler = input$trip_sampler,
+            stringsAsFactors = FALSE
+          )
+        })
+
+        shiny::observeEvent(input$save_string, {
+          shiny::req(!is.null(rv$trip), nzchar(input$trip_id), !is.na(input$string_no))
+
+          new_row <- data.frame(
+            trip_id = input$trip_id,
+            string_no = as.integer(input$string_no),
+            lat = input$lat,
+            long = input$long,
+            grid = input$grid,
+            depth = input$depth,
+            stringsAsFactors = FALSE
+          )
+
+          rv$strings <- unique(rbind(rv$strings, new_row))
+        })
+
+        shiny::observeEvent(input$save_sample, {
+          shiny::req(!is.null(rv$trip), nzchar(input$trip_id), !is.na(input$sample_string_no), !is.na(input$lobster_no))
+
+          has_string <- any(
+            rv$strings$trip_id == input$trip_id &
+              rv$strings$string_no == as.integer(input$sample_string_no)
+          )
+          shiny::req(has_string)
+
+          new_row <- data.frame(
+            trip_id = input$trip_id,
+            string_no = as.integer(input$sample_string_no),
+            lobster_no = as.integer(input$lobster_no),
+            length = input$length,
+            hardness = input$hardness,
+            egg = input$egg,
+            pleopod = input$pleopod,
+            ovary = input$ovary,
+            comments = input$comments,
+            stringsAsFactors = FALSE
+          )
+
+          rv$samples <- unique(rbind(rv$samples, new_row))
+        })
+
+        output$trip_table <- shiny::renderTable(rv$trip)
+        output$string_table <- shiny::renderTable(rv$strings)
+        output$sample_table <- shiny::renderTable(rv$samples)
       }
     )
   )
