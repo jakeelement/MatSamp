@@ -58,6 +58,27 @@ matinput <- function() {
           shiny::column(width = 3, shiny::textInput("trip_port", "PORT"))
         ),
         shiny::fluidRow(
+          shiny::column(width = 3, shiny::textInput("trip_lfa", "LFA")),
+          shiny::column(width = 6, shiny::textInput("trip_sampler", "SAMPLER")),
+          shiny::column(width = 3, shiny::actionButton("save_trip", "Save/Update Trip", class = "btn-primary"))
+          shiny::column(
+            width = 3,
+            shiny::textInput("trip_id", "TRIPID")
+          ),
+          shiny::column(
+            width = 3,
+            shiny::textInput("trip_org", "ORG.")
+          ),
+          shiny::column(
+            width = 3,
+            shiny::dateInput("trip_date", "DATE")
+          ),
+          shiny::column(
+            width = 3,
+            shiny::textInput("trip_port", "PORT")
+          )
+        ),
+        shiny::fluidRow(
           shiny::column(
             width = 3,
             shiny::textInput("trip_lfa", "LFA")
@@ -83,11 +104,77 @@ matinput <- function() {
         shiny::fluidRow(
           shiny::column(width = 3, shiny::numericInput("depth", "DEPTH (FM)", value = NA)),
           shiny::column(width = 3, shiny::actionButton("next_string", "Next String", class = "btn-primary"))
+          shiny::column(
+            width = 3,
+            shiny::numericInput("string_no", "STRING #", value = NA, min = 1, step = 1)
+          ),
+          shiny::column(
+            width = 3,
+            shiny::textInput("lat", "LAT (DDMM.MM)")
+          ),
+          shiny::column(
+            width = 3,
+            shiny::textInput("long", "LONG (DDMM.MM)")
+          ),
+          shiny::column(
+            width = 3,
+            shiny::textInput("grid", "GRID")
+          )
+        ),
+        shiny::fluidRow(
+          shiny::column(
+            width = 3,
+            shiny::numericInput("depth", "DEPTH (FM)", value = NA)
+          ),
+          shiny::column(
+            width = 3,
+            shiny::actionButton("save_string", "Save String", class = "btn-primary")
+          )
         ),
 
         shiny::tags$hr(),
         shiny::h3("SAMPLE INFORMATION"),
         shiny::uiOutput("sample_rows"),
+        shiny::fluidRow(
+          shiny::column(
+            width = 2,
+            shiny::numericInput("sample_string_no", "STRING #", value = NA, min = 1, step = 1)
+          ),
+          shiny::column(
+            width = 2,
+            shiny::numericInput("lobster_no", "LOBSTER #", value = NA, min = 1, step = 1)
+          ),
+          shiny::column(
+            width = 2,
+            shiny::numericInput("length", "LENGTH", value = NA)
+          ),
+          shiny::column(
+            width = 2,
+            shiny::textInput("hardness", "HARDNESS")
+          ),
+          shiny::column(
+            width = 2,
+            shiny::textInput("egg", "EGG")
+          ),
+          shiny::column(
+            width = 2,
+            shiny::textInput("pleopod", "PLEOPOD")
+          )
+        ),
+        shiny::fluidRow(
+          shiny::column(
+            width = 3,
+            shiny::textInput("ovary", "OVARY")
+          ),
+          shiny::column(
+            width = 7,
+            shiny::textInput("comments", "COMMENTS")
+          ),
+          shiny::column(
+            width = 2,
+            shiny::actionButton("save_sample", "Save Sample", class = "btn-primary")
+          )
+        ),
 
         shiny::tags$hr(),
         shiny::h4("Current Trip"),
@@ -117,6 +204,9 @@ matinput <- function() {
           }
         })
 
+          samples = data.frame()
+        )
+
         shiny::observeEvent(input$save_trip, {
           rv$trip <- data.frame(
             trip_id = input$trip_id,
@@ -133,6 +223,10 @@ matinput <- function() {
           shiny::req(!is.null(rv$trip), nzchar(input$trip_id), !is.na(input$string_no))
 
           new_string <- data.frame(
+        shiny::observeEvent(input$save_string, {
+          shiny::req(!is.null(rv$trip), nzchar(input$trip_id), !is.na(input$string_no))
+
+          new_row <- data.frame(
             trip_id = input$trip_id,
             string_no = as.integer(input$string_no),
             lat = input$lat,
@@ -174,6 +268,33 @@ matinput <- function() {
           shiny::updateNumericInput(session, "depth", value = NA)
           shiny::updateNumericInput(session, "string_no", value = ifelse(is.na(input$string_no), NA, input$string_no + 1))
           rv$sample_row_count <- 1
+
+          rv$strings <- unique(rbind(rv$strings, new_row))
+        })
+
+        shiny::observeEvent(input$save_sample, {
+          shiny::req(!is.null(rv$trip), nzchar(input$trip_id), !is.na(input$sample_string_no), !is.na(input$lobster_no))
+
+          has_string <- any(
+            rv$strings$trip_id == input$trip_id &
+              rv$strings$string_no == as.integer(input$sample_string_no)
+          )
+          shiny::req(has_string)
+
+          new_row <- data.frame(
+            trip_id = input$trip_id,
+            string_no = as.integer(input$sample_string_no),
+            lobster_no = as.integer(input$lobster_no),
+            length = input$length,
+            hardness = input$hardness,
+            egg = input$egg,
+            pleopod = input$pleopod,
+            ovary = input$ovary,
+            comments = input$comments,
+            stringsAsFactors = FALSE
+          )
+
+          rv$samples <- unique(rbind(rv$samples, new_row))
         })
 
         output$trip_table <- shiny::renderTable(rv$trip)
