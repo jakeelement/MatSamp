@@ -8,5 +8,7 @@ License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 Imports:
-    shiny
+    shiny,
+    DBI,
+    RSQLite
 Config/roxygen2/version: 8.0.0
