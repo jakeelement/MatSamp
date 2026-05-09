@@ -135,7 +135,7 @@ matinput <- function() {
     shiny::fluidRow(
       shiny::column(width = 3, shiny::textInput("trip_lfa", "LFA")),
       shiny::column(width = 6, shiny::textInput("trip_sampler", "SAMPLER")),
-      shiny::column(width = 3, shiny::actionButton("save_trip", "Save/Update Trip", class = "btn-primary"))
+      shiny::column(width = 3, shiny::actionButton("save_trip", "Save Trip", class = "btn-primary"))
     )
   )
 
@@ -150,7 +150,7 @@ matinput <- function() {
     ),
     shiny::fluidRow(
       shiny::column(width = 3, shiny::numericInput("depth", "DEPTH (FM)", value = NA)),
-      shiny::column(width = 3, shiny::actionButton("next_string", "Next String", class = "btn-primary"))
+      shiny::column(width = 3, shiny::actionButton("next_string", "Next String / Save", class = "btn-primary"))
     )
   )
 
