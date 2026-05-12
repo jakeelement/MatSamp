@@ -124,14 +124,16 @@ matinput <- function() {
     }
   }
 
-  read_from_db <- function(db_path, trip_id) {
+  read_from_db <- function(db_path) {
     con <- DBI::dbConnect(RSQLite::SQLite(), dbname = db_path)
     on.exit(DBI::dbDisconnect(con), add = TRUE)
 
     if (!DBI::dbExistsTable(con, "TRIP")) stop("TRIP table not found in database")
 
-    trip_df <- DBI::dbGetQuery(con, "SELECT TRIPID, ORG, TRIP_DATE, PORT, LFA, SAMPLER FROM TRIP WHERE TRIPID = ?", params = list(trip_id))
-    if (nrow(trip_df) == 0) stop(paste("No TRIP record found for TRIPID", trip_id))
+    trip_df <- DBI::dbGetQuery(con, "SELECT TRIPID, ORG, TRIP_DATE, PORT, LFA, SAMPLER FROM TRIP ORDER BY TRIPID")
+    if (nrow(trip_df) == 0) stop("No TRIP records found in database")
+    if (nrow(trip_df) > 1) stop("Database contains multiple TRIPIDs; expected one trip per .db file")
+    trip_id <- trip_df$TRIPID[1]
 
     string_df <- if (DBI::dbExistsTable(con, "STRING_INFO")) {
       DBI::dbGetQuery(con, "SELECT TRIPID, STRING_NO, LAT, LONG, GRID, DEPTH FROM STRING_INFO WHERE TRIPID = ? ORDER BY STRING_NO", params = list(trip_id))
@@ -173,7 +175,7 @@ matinput <- function() {
     shiny::fluidRow(
       shiny::column(width = 3, shiny::textInput("trip_lfa", "LFA")),
       shiny::column(width = 6, shiny::textInput("trip_sampler", "SAMPLER")),
-      shiny::column(width = 3, shiny::actionButton("save_trip", "Save Trip", class = "btn-primary"))
+      shiny::column(width = 3, shiny::actionButton("save_trip", "Create / Update Trip", class = "btn-primary"))
     )
   )
 
@@ -188,7 +190,7 @@ matinput <- function() {
     ),
     shiny::fluidRow(
       shiny::column(width = 3, shiny::numericInput("depth", "DEPTH (FM)", value = NA)),
-      shiny::column(width = 3, shiny::actionButton("next_string", "Next String / Save", class = "btn-primary"))
+      shiny::column(width = 3, shiny::actionButton("next_string", "Next String / Update", class = "btn-primary"))
     )
   )
 
@@ -202,13 +204,10 @@ matinput <- function() {
     shiny::tags$hr(),
     shiny::h3("DATABASE EXPORT"),
     shiny::fluidRow(
-      shiny::column(width = 8, shiny::textInput("db_folder", "Local folder path", value = getwd())),
-      shiny::column(width = 4, shiny::textInput("db_name", "Database file name", value = "matsamp_data.db"))
+      shiny::column(width = 12, shiny::textInput("db_folder", "Local folder path", value = getwd()))
     ),
     shiny::fluidRow(
-      shiny::column(width = 4, shiny::actionButton("save_db", "Save to .db", class = "btn-success")),
-      shiny::column(width = 4, shiny::textInput("load_trip_id", "Load TRIPID", value = "")),
-      shiny::column(width = 4, shiny::actionButton("load_db", "Load existing .db", class = "btn-info"))
+      shiny::column(width = 4, shiny::actionButton("save_db", "Save to .db", class = "btn-success"))
     ),
     shiny::verbatimTextOutput("db_status")
   )
@@ -217,6 +216,8 @@ matinput <- function() {
     shiny::shinyApp(
       ui = shiny::fluidPage(
         shiny::titlePanel("CLRN SOM50 AT-SEA SAMPLE DATA FORM"),
+        shiny::tags$h4("Load Existing Trip"),
+        shiny::fileInput("load_db_file", label = NULL, accept = c(".db")),
         trip_ui,
         location_ui,
         sample_ui,
@@ -258,10 +259,6 @@ matinput <- function() {
             sampler = input$trip_sampler,
             stringsAsFactors = FALSE
           )
-          if (nzchar(input$trip_id)) {
-            shiny::updateTextInput(session, "db_name", value = paste0(input$trip_id, ".db"))
-            shiny::updateTextInput(session, "load_trip_id", value = input$trip_id)
-          }
         })
 
         shiny::observeEvent(input$next_string, {
@@ -319,13 +316,13 @@ matinput <- function() {
         })
 
         shiny::observeEvent(input$save_db, {
-          shiny::req(nzchar(input$db_folder), nzchar(input$db_name), !is.null(rv$trip))
+          shiny::req(nzchar(input$db_folder), !is.null(rv$trip), nrow(rv$trip) > 0, nzchar(rv$trip$trip_id[1]))
           if (!dir.exists(input$db_folder)) {
             rv$db_status <- paste("Folder does not exist:", input$db_folder)
             return()
           }
 
-          db_path <- file.path(input$db_folder, input$db_name)
+          db_path <- file.path(input$db_folder, paste0("MAT_", rv$trip$trip_id[1], ".db"))
           tryCatch({
             write_to_db(db_path, rv$trip, rv$strings, rv$samples)
             rv$db_status <- paste("Saved database:", db_path)
@@ -334,16 +331,16 @@ matinput <- function() {
           })
         })
 
-        shiny::observeEvent(input$load_db, {
-          shiny::req(nzchar(input$db_folder), nzchar(input$load_trip_id))
-          db_path <- file.path(input$db_folder, paste0(input$load_trip_id, ".db"))
+        shiny::observeEvent(input$load_db_file, {
+          shiny::req(input$load_db_file$datapath)
+          db_path <- input$load_db_file$datapath
           if (!file.exists(db_path)) {
             rv$db_status <- paste("Database file not found:", db_path)
             return()
           }
 
           tryCatch({
-            loaded <- read_from_db(db_path, input$load_trip_id)
+            loaded <- read_from_db(db_path)
             rv$trip <- loaded$trip
             rv$strings <- loaded$strings
             rv$samples <- loaded$samples
@@ -354,8 +351,6 @@ matinput <- function() {
             shiny::updateTextInput(session, "trip_port", value = rv$trip$port[1])
             shiny::updateTextInput(session, "trip_lfa", value = rv$trip$lfa[1])
             shiny::updateTextInput(session, "trip_sampler", value = rv$trip$sampler[1])
-            shiny::updateTextInput(session, "db_name", value = paste0(input$load_trip_id, ".db"))
-
             next_string <- if (nrow(rv$strings) > 0) max(rv$strings$string_no, na.rm = TRUE) + 1 else 1
             shiny::updateNumericInput(session, "string_no", value = next_string)
             rv$db_status <- paste("Loaded database:", db_path)
