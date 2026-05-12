@@ -74,6 +74,8 @@ matinput <- function() {
     ")
 
     if (!is.null(trip_df) && nrow(trip_df) > 0) {
+      DBI::dbExecute(con, "DELETE FROM SAMPLE WHERE TRIPID = ?", params = list(trip_df$trip_id[1]))
+      DBI::dbExecute(con, "DELETE FROM STRING_INFO WHERE TRIPID = ?", params = list(trip_df$trip_id[1]))
       DBI::dbExecute(con, "DELETE FROM TRIP WHERE TRIPID = ?", params = list(trip_df$trip_id[1]))
       DBI::dbExecute(con, "INSERT INTO TRIP (TRIPID, ORG, TRIP_DATE, PORT, LFA, SAMPLER) VALUES (?, ?, ?, ?, ?, ?)",
         params = unname(as.list(trip_df[1, c("trip_id", "org", "date", "port", "lfa", "sampler")]))
@@ -82,7 +84,6 @@ matinput <- function() {
 
     if (nrow(string_df) > 0) {
       string_df <- unique(string_df)
-      DBI::dbExecute(con, "DELETE FROM STRING_INFO WHERE TRIPID = ?", params = list(string_df$trip_id[1]))
       DBI::dbWriteTable(
         con,
         "STRING_INFO",
@@ -102,7 +103,6 @@ matinput <- function() {
 
     if (nrow(sample_df) > 0) {
       sample_df <- unique(sample_df)
-      DBI::dbExecute(con, "DELETE FROM SAMPLE WHERE TRIPID = ?", params = list(sample_df$trip_id[1]))
       DBI::dbWriteTable(
         con,
         "SAMPLE",
@@ -122,6 +122,44 @@ matinput <- function() {
         row.names = FALSE
       )
     }
+  }
+
+  read_from_db <- function(db_path, trip_id) {
+    con <- DBI::dbConnect(RSQLite::SQLite(), dbname = db_path)
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+    if (!DBI::dbExistsTable(con, "TRIP")) stop("TRIP table not found in database")
+
+    trip_df <- DBI::dbGetQuery(con, "SELECT TRIPID, ORG, TRIP_DATE, PORT, LFA, SAMPLER FROM TRIP WHERE TRIPID = ?", params = list(trip_id))
+    if (nrow(trip_df) == 0) stop(paste("No TRIP record found for TRIPID", trip_id))
+
+    string_df <- if (DBI::dbExistsTable(con, "STRING_INFO")) {
+      DBI::dbGetQuery(con, "SELECT TRIPID, STRING_NO, LAT, LONG, GRID, DEPTH FROM STRING_INFO WHERE TRIPID = ? ORDER BY STRING_NO", params = list(trip_id))
+    } else {
+      data.frame()
+    }
+
+    sample_df <- if (DBI::dbExistsTable(con, "SAMPLE")) {
+      DBI::dbGetQuery(con, "SELECT TRIPID, STRING_NO, LOBSTER_NO, LENGTH, HARDNESS, EGG, PLEOPOD, OVARY, COMMENTS FROM SAMPLE WHERE TRIPID = ? ORDER BY STRING_NO, LOBSTER_NO", params = list(trip_id))
+    } else {
+      data.frame()
+    }
+
+    list(
+      trip = data.frame(
+        trip_id = trip_df$TRIPID, org = trip_df$ORG, date = trip_df$TRIP_DATE,
+        port = trip_df$PORT, lfa = trip_df$LFA, sampler = trip_df$SAMPLER, stringsAsFactors = FALSE
+      ),
+      strings = data.frame(
+        trip_id = string_df$TRIPID, string_no = string_df$STRING_NO, lat = string_df$LAT,
+        long = string_df$LONG, grid = string_df$GRID, depth = string_df$DEPTH, stringsAsFactors = FALSE
+      ),
+      samples = data.frame(
+        trip_id = sample_df$TRIPID, string_no = sample_df$STRING_NO, lobster_no = sample_df$LOBSTER_NO,
+        length = sample_df$LENGTH, hardness = sample_df$HARDNESS, egg = sample_df$EGG,
+        pleopod = sample_df$PLEOPOD, ovary = sample_df$OVARY, comments = sample_df$COMMENTS, stringsAsFactors = FALSE
+      )
+    )
   }
 
   trip_ui <- shiny::tagList(
@@ -167,7 +205,11 @@ matinput <- function() {
       shiny::column(width = 8, shiny::textInput("db_folder", "Local folder path", value = getwd())),
       shiny::column(width = 4, shiny::textInput("db_name", "Database file name", value = "matsamp_data.db"))
     ),
-    shiny::actionButton("save_db", "Save to .db", class = "btn-success"),
+    shiny::fluidRow(
+      shiny::column(width = 4, shiny::actionButton("save_db", "Save to .db", class = "btn-success")),
+      shiny::column(width = 4, shiny::textInput("load_trip_id", "Load TRIPID", value = "")),
+      shiny::column(width = 4, shiny::actionButton("load_db", "Load existing .db", class = "btn-info"))
+    ),
     shiny::verbatimTextOutput("db_status")
   )
 
@@ -216,6 +258,10 @@ matinput <- function() {
             sampler = input$trip_sampler,
             stringsAsFactors = FALSE
           )
+          if (nzchar(input$trip_id)) {
+            shiny::updateTextInput(session, "db_name", value = paste0(input$trip_id, ".db"))
+            shiny::updateTextInput(session, "load_trip_id", value = input$trip_id)
+          }
         })
 
         shiny::observeEvent(input$next_string, {
@@ -285,6 +331,36 @@ matinput <- function() {
             rv$db_status <- paste("Saved database:", db_path)
           }, error = function(e) {
             rv$db_status <- paste("Database save failed:", conditionMessage(e))
+          })
+        })
+
+        shiny::observeEvent(input$load_db, {
+          shiny::req(nzchar(input$db_folder), nzchar(input$load_trip_id))
+          db_path <- file.path(input$db_folder, paste0(input$load_trip_id, ".db"))
+          if (!file.exists(db_path)) {
+            rv$db_status <- paste("Database file not found:", db_path)
+            return()
+          }
+
+          tryCatch({
+            loaded <- read_from_db(db_path, input$load_trip_id)
+            rv$trip <- loaded$trip
+            rv$strings <- loaded$strings
+            rv$samples <- loaded$samples
+
+            shiny::updateTextInput(session, "trip_id", value = rv$trip$trip_id[1])
+            shiny::updateTextInput(session, "trip_org", value = rv$trip$org[1])
+            shiny::updateDateInput(session, "trip_date", value = rv$trip$date[1])
+            shiny::updateTextInput(session, "trip_port", value = rv$trip$port[1])
+            shiny::updateTextInput(session, "trip_lfa", value = rv$trip$lfa[1])
+            shiny::updateTextInput(session, "trip_sampler", value = rv$trip$sampler[1])
+            shiny::updateTextInput(session, "db_name", value = paste0(input$load_trip_id, ".db"))
+
+            next_string <- if (nrow(rv$strings) > 0) max(rv$strings$string_no, na.rm = TRUE) + 1 else 1
+            shiny::updateNumericInput(session, "string_no", value = next_string)
+            rv$db_status <- paste("Loaded database:", db_path)
+          }, error = function(e) {
+            rv$db_status <- paste("Database load failed:", conditionMessage(e))
           })
         })
 
