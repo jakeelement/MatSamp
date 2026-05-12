@@ -204,7 +204,7 @@ matinput <- function() {
     shiny::tags$hr(),
     shiny::h3("DATABASE EXPORT"),
     shiny::fluidRow(
-      shiny::column(width = 12, shiny::textInput("db_folder", "Local folder path", value = getwd()))
+      shiny::column(width = 12, shiny::textInput("db_folder", "Local folder path", value = ""))
     ),
     shiny::fluidRow(
       shiny::column(width = 4, shiny::actionButton("choose_db_folder", "Choose Save Directory", class = "btn-primary")),
@@ -374,6 +374,9 @@ matinput <- function() {
             shiny::updateTextInput(session, "trip_sampler", value = rv$trip$sampler[1])
             next_string <- if (nrow(rv$strings) > 0) max(rv$strings$string_no, na.rm = TRUE) + 1 else 1
             shiny::updateNumericInput(session, "string_no", value = next_string)
+            loaded_folder <- dirname(normalizePath(db_path, winslash = "/", mustWork = FALSE))
+            shiny::updateTextInput(session, "db_folder", value = loaded_folder)
+            rv$has_selected_db_folder <- TRUE
             rv$db_status <- paste("Loaded database:", db_path)
           }, error = function(e) {
             rv$db_status <- paste("Database load failed:", conditionMessage(e))
