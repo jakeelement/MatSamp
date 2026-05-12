@@ -218,7 +218,7 @@ matinput <- function() {
       ui = shiny::fluidPage(
         shiny::titlePanel("CLRN SOM50 AT-SEA SAMPLE DATA FORM"),
         shiny::tags$h4("Load Existing Trip"),
-        shiny::fileInput("load_db_file", label = NULL, accept = c(".db")),
+        shiny::actionButton("load_db_file", "Choose .db File", class = "btn-secondary"),
         trip_ui,
         location_ui,
         sample_ui,
@@ -353,8 +353,8 @@ matinput <- function() {
         })
 
         shiny::observeEvent(input$load_db_file, {
-          shiny::req(input$load_db_file$datapath)
-          db_path <- input$load_db_file$datapath
+          db_path <- tcltk::tk_getOpenFile(filetypes = "{{Database files} {.db}} {{All files} *}", caption = "Choose trip database")
+          if (is.na(db_path) || !nzchar(db_path)) return()
           if (!file.exists(db_path)) {
             rv$db_status <- paste("Database file not found:", db_path)
             return()
@@ -377,7 +377,7 @@ matinput <- function() {
             loaded_folder <- dirname(normalizePath(db_path, winslash = "/", mustWork = FALSE))
             shiny::updateTextInput(session, "db_folder", value = loaded_folder)
             rv$has_selected_db_folder <- TRUE
-            rv$db_status <- paste("Loaded database:", db_path)
+            rv$db_status <- paste("Loaded database:", normalizePath(db_path, winslash = "/", mustWork = FALSE))
           }, error = function(e) {
             rv$db_status <- paste("Database load failed:", conditionMessage(e))
           })
