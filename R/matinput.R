@@ -353,8 +353,9 @@ matinput <- function() {
         })
 
         shiny::observeEvent(input$load_db_file, {
-          db_path <- tcltk::tkgetOpenFile(filetypes = "{{Database files} {.db}} {{All files} *}", title = "Choose trip database")
-          if (is.na(db_path) || !nzchar(db_path)) return()
+          db_path_tcl <- tcltk::tkgetOpenFile(filetypes = "{{Database files} {.db}} {{All files} *}", title = "Choose trip database")
+          db_path <- as.character(tcltk::tclvalue(db_path_tcl))
+          if (!nzchar(db_path)) return()
           if (!file.exists(db_path)) {
             rv$db_status <- paste("Database file not found:", db_path)
             return()
