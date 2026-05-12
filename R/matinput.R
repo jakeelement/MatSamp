@@ -207,7 +207,8 @@ matinput <- function() {
       shiny::column(width = 12, shiny::textInput("db_folder", "Local folder path", value = getwd()))
     ),
     shiny::fluidRow(
-      shiny::column(width = 4, shiny::actionButton("save_db", "Save to .db", class = "btn-success"))
+      shiny::column(width = 4, shiny::actionButton("choose_db_folder", "Choose Save Directory", class = "btn-primary")),
+      shiny::column(width = 4, shiny::uiOutput("save_db_ui"))
     ),
     shiny::verbatimTextOutput("db_status")
   )
@@ -236,7 +237,8 @@ matinput <- function() {
           strings = data.frame(),
           samples = data.frame(),
           sample_row_count = 1,
-          db_status = ""
+          db_status = "",
+          has_selected_db_folder = FALSE
         )
 
         shiny::observe({
@@ -249,6 +251,25 @@ matinput <- function() {
           }
         })
 
+
+
+        output$save_db_ui <- shiny::renderUI({
+          shiny::actionButton(
+            "save_db",
+            "Save to .db",
+            class = "btn-success",
+            disabled = !isTRUE(rv$has_selected_db_folder)
+          )
+        })
+
+        shiny::observeEvent(input$choose_db_folder, {
+          selected_dir <- tcltk::tk_choose.dir(default = input$db_folder, caption = "Choose save directory")
+          if (!is.null(selected_dir) && nzchar(selected_dir)) {
+            shiny::updateTextInput(session, "db_folder", value = selected_dir)
+            rv$has_selected_db_folder <- TRUE
+            rv$db_status <- paste("Save directory selected:", selected_dir)
+          }
+        })
         shiny::observeEvent(input$save_trip, {
           rv$trip <- data.frame(
             trip_id = input$trip_id,
