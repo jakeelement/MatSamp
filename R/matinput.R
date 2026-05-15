@@ -216,6 +216,62 @@ matinput <- function() {
   shiny::runApp(
     shiny::shinyApp(
       ui = shiny::fluidPage(
+        shiny::tags$script(shiny::HTML("
+          document.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+
+              var focusable = Array.prototype.filter.call(
+                document.querySelectorAll('input, select, textarea, button, [tabindex]'),
+                function(el) {
+                  return el.tabIndex >= 0 && !el.disabled && el.offsetParent !== null;
+                }
+              );
+
+              var index = focusable.indexOf(document.activeElement);
+              if (index > -1 && index + 1 < focusable.length) {
+                var next = focusable[index + 1];
+                next.focus();
+                if (next.tagName === 'INPUT' || next.tagName === 'TEXTAREA') {
+                  next.select();
+                }
+              }
+            }
+          });
+        ")),
+        shiny::tags$script(shiny::HTML("
+          document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              document.execCommand('undo');
+            }
+          });
+        ")),
+        shiny::tags$script(shiny::HTML("
+          $(document).ready(function() {
+            function disableNumericScroll(target) {
+              $(target).on('wheel', function(e) {
+                e.preventDefault();
+              });
+            }
+
+            disableNumericScroll('input[type=\"number\"]');
+
+            const observer = new MutationObserver(function(mutations) {
+              mutations.forEach(function(mutation) {
+                mutation.addedNodes.forEach(function(node) {
+                  if (!(node instanceof Element)) return;
+                  if ($(node).is('input[type=\"number\"]')) {
+                    disableNumericScroll(node);
+                  }
+                  disableNumericScroll($(node).find('input[type=\"number\"]'));
+                });
+              });
+            });
+
+            observer.observe(document.body, { childList: true, subtree: true });
+          });
+        ")),
         shiny::titlePanel("CLRN SOM50 AT-SEA SAMPLE DATA FORM"),
         shiny::tags$h4("Load Existing Trip"),
         shiny::actionButton("load_db_file", "Choose .db File", class = "btn-secondary"),
