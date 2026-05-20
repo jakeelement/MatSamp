@@ -320,23 +320,20 @@ matinput <- function() {
             $('button').prop('disabled', msg.disabled);
           });
         ")),
-        shiny::titlePanel("CLRN SOM50 AT-SEA SAMPLE DATA FORM"),
-        shiny::tags$h4("Load Existing Trip"),
-        shiny::actionButton("load_db_file", "Choose .db File", class = "btn-secondary"),
-        trip_ui,
-        location_ui,
-        sample_ui,
-        export_ui,
+        shiny::fluidRow(
+          shiny::column(12, shiny::h3("Choose Input Window")),
+          shiny::column(4, shiny::actionButton("choose_atsea", "At-Sea Sample", class = "btn-primary")),
+          shiny::column(4, shiny::actionButton("choose_pleopod", "Lab Pleopod Sample", class = "btn-primary")),
+          shiny::column(4, shiny::actionButton("choose_ovary", "Lab Ovary Sample", class = "btn-primary"))
+        ),
         shiny::tags$hr(),
-        shiny::h4("Current Trip"),
-        shiny::tableOutput("trip_table"),
-        shiny::h4("Current Strings"),
-        shiny::tableOutput("string_table"),
-        shiny::h4("Current Samples"),
-        shiny::tableOutput("sample_table")
+        shiny::uiOutput("form_ui"),
+
       ),
       server = function(input, output, session) {
+
         rv <- shiny::reactiveValues(
+          form_type = NULL,
           trip = NULL,
           strings = data.frame(),
           samples = data.frame(),
@@ -344,6 +341,43 @@ matinput <- function() {
           db_status = "",
           has_selected_db_folder = FALSE
         )
+
+
+        output$form_ui <- shiny::renderUI({
+          if (is.null(rv$form_type)) return(NULL)
+          common_top <- shiny::tagList(
+            shiny::tags$h4("Load Existing Trip"),
+            shiny::actionButton("load_db_file", "Choose .db File", class = "btn-secondary")
+          )
+          if (identical(rv$form_type, "atsea")) {
+            return(shiny::tagList(
+              shiny::titlePanel("CLRN SOM50 AT-SEA SAMPLE DATA FORM"), common_top,
+              trip_ui, location_ui, sample_ui, export_ui,
+              shiny::tags$hr(), shiny::h4("Current Trip"), shiny::tableOutput("trip_table"),
+              shiny::h4("Current Strings"), shiny::tableOutput("string_table"),
+              shiny::h4("Current Samples"), shiny::tableOutput("sample_table")
+            ))
+          }
+          if (identical(rv$form_type, "pleopod")) {
+            return(shiny::tagList(shiny::titlePanel("CLRN SOM50 LAB PLEOPOD SAMPLE DATA FORM"), common_top,
+              trip_ui,
+              shiny::h3("SAMPLE INFORMATION"),
+              shiny::textInput("pl_count", "# PLEOPODS"),
+              shiny::textInput("pl_lab_date", "LAB DATE (DDMMYY)"),
+              shiny::uiOutput("pleopod_rows"), export_ui, shiny::tableOutput("pleopod_table")))
+          }
+          shiny::tagList(shiny::titlePanel("CLRN SOM50 LAB OVARY SAMPLE DATA FORM"), common_top,
+            trip_ui,
+            shiny::h3("SAMPLE INFORMATION"),
+            shiny::textInput("ov_count", "# Ovary"),
+            shiny::textInput("ov_lab_date", "LAB DATE (DDMMYY)"),
+            shiny::uiOutput("ovary_rows"), export_ui, shiny::tableOutput("ovary_table"))
+        })
+        shiny::observeEvent(input$choose_atsea, { rv$form_type <- "atsea" })
+        shiny::observeEvent(input$choose_pleopod, { rv$form_type <- "pleopod" })
+        shiny::observeEvent(input$choose_ovary, { rv$form_type <- "ovary" })
+        output$pleopod_rows <- shiny::renderUI(shiny::tagList(lapply(1:10, sample_row_ui)))
+        output$ovary_rows <- shiny::renderUI(shiny::tagList(lapply(1:10, sample_row_ui)))
 
         shiny::observe({
           org  <- input$trip_org
