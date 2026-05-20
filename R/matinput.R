@@ -376,10 +376,11 @@ matinput <- function() {
         shiny::observeEvent(input$choose_atsea, { rv$form_type <- "atsea" })
         shiny::observeEvent(input$choose_pleopod, { rv$form_type <- "pleopod" })
         shiny::observeEvent(input$choose_ovary, { rv$form_type <- "ovary" })
-        output$pleopod_rows <- shiny::renderUI(shiny::tagList(lapply(1:10, sample_row_ui)))
-        output$ovary_rows <- shiny::renderUI(shiny::tagList(lapply(1:10, sample_row_ui)))
+        output$pleopod_rows <- shiny::renderUI(shiny::tagList(lapply(1:10, pleopod_row_ui)))
+        output$ovary_rows <- shiny::renderUI(shiny::tagList(lapply(1:10, ovary_row_ui)))
 
         shiny::observe({
+          shiny::req(!is.null(input$trip_org), !is.null(input$trip_date))
           org  <- input$trip_org
           date <- input$trip_date
           trip_id <- if (!is.null(date) && nzchar(org)) {
@@ -391,8 +392,9 @@ matinput <- function() {
         })
 
         shiny::observe({
+          if (!identical(rv$form_type, "atsea")) return()
           lat <- input$lat
-          if (!nzchar(lat)) {
+          if (is.null(lat) || length(lat) == 0 || !nzchar(lat)) {
             shinyFeedback::hideFeedback("lat")
           } else {
             shinyFeedback::feedbackDanger("lat", !is_valid_ddmm(lat, "lat"),
@@ -401,8 +403,9 @@ matinput <- function() {
         })
 
         shiny::observe({
+          if (!identical(rv$form_type, "atsea")) return()
           long <- input$long
-          if (!nzchar(long)) {
+          if (is.null(long) || length(long) == 0 || !nzchar(long)) {
             shinyFeedback::hideFeedback("long")
           } else {
             shinyFeedback::feedbackDanger("long", !is_valid_ddmm(long, "long"),
@@ -411,6 +414,7 @@ matinput <- function() {
         })
 
         shiny::observe({
+          if (!identical(rv$form_type, "atsea")) return()
           n      <- rv$sample_row_count
           values <- sapply(seq_len(n), function(i) input[[paste0("lobster_no_", i)]])
           non_na <- values[!is.na(values)]
@@ -426,8 +430,15 @@ matinput <- function() {
         })
 
         shiny::observe({
-          lat_error  <- nzchar(input$lat)  && !is_valid_ddmm(input$lat,  "lat")
-          long_error <- nzchar(input$long) && !is_valid_ddmm(input$long, "long")
+          if (!identical(rv$form_type, "atsea")) {
+            session$sendCustomMessage("toggleButtons", list(disabled = FALSE))
+            return()
+          }
+
+          lat_val <- input$lat
+          long_val <- input$long
+          lat_error  <- !is.null(lat_val) && length(lat_val) > 0 && nzchar(lat_val) && !is_valid_ddmm(lat_val,  "lat")
+          long_error <- !is.null(long_val) && length(long_val) > 0 && nzchar(long_val) && !is_valid_ddmm(long_val, "long")
 
           n      <- rv$sample_row_count
           values <- sapply(seq_len(n), function(i) input[[paste0("lobster_no_", i)]])
@@ -438,6 +449,7 @@ matinput <- function() {
         })
 
         shiny::observe({
+          if (!identical(rv$form_type, "atsea")) return()
           i <- rv$sample_row_count
           lobster_value <- input[[paste0("lobster_no_", i)]]
           if (!is.null(lobster_value) && !is.na(lobster_value)) {
