@@ -440,6 +440,7 @@ matinput <- function() {
           lab_pleopod = data.frame(),
           lab_ovary = data.frame(),
           lab_lobster_ids = character(),
+          lab_context_loaded = FALSE,
           sample_row_count = 1,
           db_status = "",
           has_selected_db_folder = FALSE
@@ -475,11 +476,11 @@ matinput <- function() {
         shiny::observeEvent(input$choose_atsea, { rv$form_type <- "atsea" })
         shiny::observeEvent(input$choose_pleopod, {
           rv$form_type <- "pleopod"
-          rv$lab_lobster_ids <- unique(rv$samples$lobster_id)
+          if (!isTRUE(rv$lab_context_loaded)) rv$lab_lobster_ids <- character()
         })
         shiny::observeEvent(input$choose_ovary, {
           rv$form_type <- "ovary"
-          rv$lab_lobster_ids <- unique(rv$samples$lobster_id)
+          if (!isTRUE(rv$lab_context_loaded)) rv$lab_lobster_ids <- character()
         })
         output$pleopod_rows <- shiny::renderUI({
           ids <- rv$lab_lobster_ids
@@ -502,7 +503,6 @@ matinput <- function() {
             ""
           }
           shiny::updateTextInput(session, "trip_id", value = trip_id)
-          shiny::updateTextInput(session, "lab_trip_id", value = trip_id)
         })
 
         shiny::observe({
@@ -726,7 +726,6 @@ matinput <- function() {
             rv$trip <- loaded$trip
             rv$strings <- loaded$strings
             rv$samples <- loaded$samples
-            rv$lab_lobster_ids <- unique(loaded$samples$lobster_id)
             rv$lab_pleopod <- loaded$pleopod
             rv$lab_ovary <- loaded$ovary
 
@@ -735,7 +734,15 @@ matinput <- function() {
             shiny::updateTextInput(session, "trip_port", value = rv$trip$port[1])
             shiny::updateSelectInput(session, "trip_lfa", selected = rv$trip$lfa[1])
             shiny::updateTextInput(session, "trip_sampler", value = rv$trip$sampler[1])
-            shiny::updateTextInput(session, "lab_trip_id", value = rv$trip$trip_id[1])
+            if (identical(rv$form_type, "pleopod") || identical(rv$form_type, "ovary")) {
+              rv$lab_context_loaded <- TRUE
+              rv$lab_lobster_ids <- unique(loaded$samples$lobster_id)
+              shiny::updateTextInput(session, "lab_trip_id", value = rv$trip$trip_id[1])
+            } else {
+              rv$lab_context_loaded <- FALSE
+              rv$lab_lobster_ids <- character()
+              shiny::updateTextInput(session, "lab_trip_id", value = "")
+            }
             if (identical(rv$form_type, "pleopod") && nrow(rv$lab_pleopod) > 0) {
               shiny::updateTextInput(session, "lab_count", value = as.character(rv$lab_pleopod$LAB_COUNT[1]))
               shiny::updateTextInput(session, "lab_date", value = as.character(rv$lab_pleopod$LAB_DATE[1]))

@@ -43,11 +43,17 @@ mat.tab <- function(db_path = NULL, table = NULL, view = interactive()) {
     return(out)
   }
 
-  out <- stats::setNames(lapply(tables, function(tbl) DBI::dbReadTable(con, tbl)), tables)
+  out <- stats::setNames(lapply(tables, function(tbl) {
+    x <- tryCatch(DBI::dbReadTable(con, tbl), error = function(e) NULL)
+    if (is.null(x)) return(data.frame())
+    as.data.frame(x, stringsAsFactors = FALSE)
+  }), tables)
 
   if (isTRUE(view) && interactive()) {
     for (tbl in names(out)) {
-      utils::View(out[[tbl]], title = tbl)
+      if (is.data.frame(out[[tbl]])) {
+        utils::View(out[[tbl]], title = tbl)
+      }
     }
   }
 
