@@ -446,6 +446,65 @@ matinput <- function() {
           has_selected_db_folder = FALSE
         )
 
+        fill_atsea_for_string <- function(string_no) {
+          if (is.null(rv$trip) || nrow(rv$trip) == 0 || is.na(string_no)) return()
+          srow <- rv$strings[rv$strings$string_no == as.integer(string_no), , drop = FALSE]
+          if (nrow(srow) > 0) {
+            shiny::updateTextInput(session, "lat", value = ifelse(is.na(srow$lat[1]), "", srow$lat[1]))
+            shiny::updateTextInput(session, "long", value = ifelse(is.na(srow$long[1]), "", srow$long[1]))
+            shiny::updateNumericInput(session, "grid", value = srow$grid[1])
+            shiny::updateNumericInput(session, "depth", value = srow$depth[1])
+          }
+          sample_rows <- rv$samples[rv$samples$string_no == as.integer(string_no), , drop = FALSE]
+          sample_rows <- sample_rows[order(sample_rows$lobster_id), , drop = FALSE]
+          target_n <- max(1, nrow(sample_rows))
+          if (rv$sample_row_count < target_n) {
+            for (i in seq((rv$sample_row_count + 1), target_n)) {
+              shiny::insertUI(selector = "#sample_rows_container", where = "beforeEnd", ui = sample_row_ui(i))
+            }
+            rv$sample_row_count <- target_n
+          } else if (rv$sample_row_count > target_n) {
+            for (i in seq((target_n + 1), rv$sample_row_count)) {
+              shiny::removeUI(selector = paste0("#sample_row_", i), immediate = TRUE)
+            }
+            rv$sample_row_count <- target_n
+          }
+          for (i in seq_len(rv$sample_row_count)) {
+            if (i <= nrow(sample_rows)) {
+              lid <- as.character(sample_rows$lobster_id[i])
+              lobster_no <- suppressWarnings(as.integer(substr(lid, nchar(rv$trip$trip_id[1]) + 3, nchar(rv$trip$trip_id[1]) + 4)))
+              shiny::updateNumericInput(session, paste0("lobster_no_", i), value = lobster_no)
+              shiny::updateNumericInput(session, paste0("length_", i), value = sample_rows$length[i])
+              shiny::updateSelectInput(session, paste0("hardness_", i), selected = ifelse(is.na(sample_rows$hardness[i]), "", sample_rows$hardness[i]))
+              shiny::updateSelectInput(session, paste0("egg_", i), selected = ifelse(is.na(sample_rows$egg[i]), "", sample_rows$egg[i]))
+              shiny::updateSelectInput(session, paste0("pleopod_", i), selected = ifelse(is.na(sample_rows$pleopod[i]), "", sample_rows$pleopod[i]))
+              shiny::updateSelectInput(session, paste0("ovary_", i), selected = ifelse(is.na(sample_rows$ovary[i]), "", sample_rows$ovary[i]))
+              shiny::updateTextInput(session, paste0("comments_", i), value = ifelse(is.na(sample_rows$comments[i]), "", sample_rows$comments[i]))
+            } else {
+              shiny::updateNumericInput(session, paste0("lobster_no_", i), value = NA)
+              shiny::updateNumericInput(session, paste0("length_", i), value = NA)
+              shiny::updateSelectInput(session, paste0("hardness_", i), selected = "")
+              shiny::updateSelectInput(session, paste0("egg_", i), selected = "")
+              shiny::updateSelectInput(session, paste0("pleopod_", i), selected = "")
+              shiny::updateSelectInput(session, paste0("ovary_", i), selected = "")
+              shiny::updateTextInput(session, paste0("comments_", i), value = "")
+            }
+          }
+        }
+
+        fill_lab_forms <- function() {
+          if (is.null(rv$trip) || nrow(rv$trip) == 0) return()
+          shiny::updateTextInput(session, "lab_trip_id", value = rv$trip$trip_id[1])
+          rv$lab_lobster_ids <- unique(rv$samples$lobster_id)
+          if (nrow(rv$lab_pleopod) > 0) {
+            shiny::updateTextInput(session, "lab_count", value = as.character(rv$lab_pleopod$LAB_COUNT[1]))
+            shiny::updateTextInput(session, "lab_date", value = as.character(rv$lab_pleopod$LAB_DATE[1]))
+          } else if (nrow(rv$lab_ovary) > 0) {
+            shiny::updateTextInput(session, "lab_count", value = as.character(rv$lab_ovary$LAB_COUNT[1]))
+            shiny::updateTextInput(session, "lab_date", value = as.character(rv$lab_ovary$LAB_DATE[1]))
+          }
+        }
+
 
         output$form_ui <- shiny::renderUI({
           if (is.null(rv$form_type)) return(NULL)
@@ -473,12 +532,26 @@ matinput <- function() {
             shiny::h3("SAMPLE INFORMATION"),
             shiny::uiOutput("ovary_rows"), export_ui, shiny::tableOutput("ovary_table"))
         })
-        shiny::observeEvent(input$choose_atsea, { rv$form_type <- "atsea" })
+        shiny::observeEvent(input$choose_atsea, {
+          rv$form_type <- "atsea"
+          if (!is.null(rv$trip) && nrow(rv$trip) > 0) {
+            shiny::updateTextInput(session, "trip_org", value = rv$trip$org[1])
+            shiny::updateDateInput(session, "trip_date", value = rv$trip$date[1])
+            shiny::updateTextInput(session, "trip_port", value = rv$trip$port[1])
+            shiny::updateSelectInput(session, "trip_lfa", selected = rv$trip$lfa[1])
+            shiny::updateTextInput(session, "trip_sampler", value = rv$trip$sampler[1])
+            first_string <- if (nrow(rv$strings) > 0) min(rv$strings$string_no, na.rm = TRUE) else 1
+            shiny::updateNumericInput(session, "string_no", value = first_string)
+            fill_atsea_for_string(first_string)
+          }
+        })
         shiny::observeEvent(input$choose_pleopod, {
           rv$form_type <- "pleopod"
+          fill_lab_forms()
         })
         shiny::observeEvent(input$choose_ovary, {
           rv$form_type <- "ovary"
+          fill_lab_forms()
         })
         output$pleopod_rows <- shiny::renderUI({
           ids <- rv$lab_lobster_ids
@@ -656,6 +729,12 @@ matinput <- function() {
           shiny::updateTextInput(session, "comments_1", value = "")
         })
 
+        shiny::observeEvent(input$string_no, {
+          if (!identical(rv$form_type, "atsea")) return()
+          shiny::req(!is.null(rv$trip), nrow(rv$trip) > 0, !is.na(input$string_no))
+          fill_atsea_for_string(input$string_no)
+        }, ignoreInit = TRUE)
+
         shiny::observeEvent(input$save_db, {
           shiny::req(nzchar(input$db_folder), !is.null(rv$trip), nrow(rv$trip) > 0, nzchar(rv$trip$trip_id[1]))
           if (!dir.exists(input$db_folder)) {
@@ -733,13 +812,7 @@ matinput <- function() {
             shiny::updateSelectInput(session, "trip_lfa", selected = rv$trip$lfa[1])
             shiny::updateTextInput(session, "trip_sampler", value = rv$trip$sampler[1])
             rv$lab_context_loaded <- TRUE
-            rv$lab_lobster_ids <- unique(loaded$samples$lobster_id)
-            shiny::updateTextInput(session, "lab_trip_id", value = rv$trip$trip_id[1])
-
-            if (nrow(rv$lab_pleopod) > 0) {
-              shiny::updateTextInput(session, "lab_count", value = as.character(rv$lab_pleopod$LAB_COUNT[1]))
-              shiny::updateTextInput(session, "lab_date", value = as.character(rv$lab_pleopod$LAB_DATE[1]))
-            }
+            fill_lab_forms()
             if (nrow(rv$lab_pleopod) > 0) {
               for (i in seq_len(min(length(rv$lab_lobster_ids), nrow(rv$lab_pleopod)))) {
                 shiny::updateTextInput(session, paste0("pl_lobster_id_", i), value = rv$lab_pleopod$LOBSTER_ID[i])
@@ -750,8 +823,6 @@ matinput <- function() {
               }
             }
             if (nrow(rv$lab_ovary) > 0) {
-              shiny::updateTextInput(session, "lab_count", value = as.character(rv$lab_ovary$LAB_COUNT[1]))
-              shiny::updateTextInput(session, "lab_date", value = as.character(rv$lab_ovary$LAB_DATE[1]))
               for (i in seq_len(min(length(rv$lab_lobster_ids), nrow(rv$lab_ovary)))) {
                 shiny::updateTextInput(session, paste0("ov_lobster_id_", i), value = rv$lab_ovary$LOBSTER_ID[i])
                 shiny::updateNumericInput(session, paste0("ov_length_", i), value = rv$lab_ovary$LENGTH[i])
@@ -764,8 +835,9 @@ matinput <- function() {
                 shiny::updateTextInput(session, paste0("ov_observer_", i), value = rv$lab_ovary$OBSERVER[i])
               }
             }
-            next_string <- if (nrow(rv$strings) > 0) max(rv$strings$string_no, na.rm = TRUE) + 1 else 1
-            shiny::updateNumericInput(session, "string_no", value = next_string)
+            first_string <- if (nrow(rv$strings) > 0) min(rv$strings$string_no, na.rm = TRUE) else 1
+            shiny::updateNumericInput(session, "string_no", value = first_string)
+            fill_atsea_for_string(first_string)
             loaded_folder <- dirname(normalizePath(db_path, winslash = "/", mustWork = FALSE))
             shiny::updateTextInput(session, "db_folder", value = loaded_folder)
             rv$has_selected_db_folder <- TRUE
