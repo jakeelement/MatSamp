@@ -49,6 +49,32 @@ matinput <- function() {
     )
   }
 
+
+
+  pleopod_row_ui <- function(i) {
+    shiny::fluidRow(
+      shiny::column(width = 2, shiny::numericInput(paste0("pl_lobster_no_", i), if (i == 1) "LOBSTER #" else NULL, value = NA, min = 1, step = 1)),
+      shiny::column(width = 2, shiny::textInput(paste0("pl_cg_stage_", i), if (i == 1) "CG STAGE" else NULL)),
+      shiny::column(width = 2, shiny::textInput(paste0("pl_moult_stage_", i), if (i == 1) "MOULT STAGE" else NULL)),
+      shiny::column(width = 4, shiny::textInput(paste0("pl_image_", i), if (i == 1) "PLEOPOD IMAGE FILE NAME(S)" else NULL)),
+      shiny::column(width = 2, shiny::textInput(paste0("pl_observer_", i), if (i == 1) "OBSERVER" else NULL))
+    )
+  }
+
+  ovary_row_ui <- function(i) {
+    shiny::fluidRow(
+      shiny::column(width = 1, shiny::numericInput(paste0("ov_lobster_no_", i), if (i == 1) "LOBSTER #" else NULL, value = NA, min = 1, step = 1)),
+      shiny::column(width = 1, shiny::numericInput(paste0("ov_length_", i), if (i == 1) "LENGTH" else NULL, value = NA, min = 0)),
+      shiny::column(width = 1, shiny::numericInput(paste0("ov_whole_w_", i), if (i == 1) "Whole W." else NULL, value = NA, min = 0)),
+      shiny::column(width = 1, shiny::textInput(paste0("ov_gastrolith_", i), if (i == 1) "GASTROLITH" else NULL)),
+      shiny::column(width = 1, shiny::textInput(paste0("ov_colour_", i), if (i == 1) "OVARY COLOUR" else NULL)),
+      shiny::column(width = 1, shiny::textInput(paste0("ov_yellow_", i), if (i == 1) "YELLOW SPOTS" else NULL)),
+      shiny::column(width = 1, shiny::numericInput(paste0("ov_weight_", i), if (i == 1) "OVARY WEIGHT" else NULL, value = NA, min = 0)),
+      shiny::column(width = 3, shiny::textInput(paste0("ov_image_", i), if (i == 1) "IMAGE NAME(S)/COMMENTS" else NULL)),
+      shiny::column(width = 2, shiny::textInput(paste0("ov_observer_", i), if (i == 1) "OBSERVER" else NULL))
+    )
+  }
+
   write_to_db <- function(db_path, trip_df, string_df, sample_df) {
     con <- DBI::dbConnect(RSQLite::SQLite(), dbname = db_path)
     on.exit(DBI::dbDisconnect(con), add = TRUE)
@@ -200,6 +226,17 @@ matinput <- function() {
         selected = "")),
       shiny::column(width = 6, shiny::textInput("trip_sampler", "SAMPLER")),
       shiny::column(width = 3, shiny::actionButton("save_trip", "Create / Update Trip", class = "btn-primary"))
+    )
+  )
+
+
+
+  lab_info_ui <- shiny::tagList(
+    shiny::h3("LAB INFORMATION"),
+    shiny::fluidRow(
+      shiny::column(width = 4, htmltools::tagAppendAttributes(shiny::textInput("lab_trip_id", "TRIPID"), .cssSelector = "input", readonly = "readonly")),
+      shiny::column(width = 4, shiny::textInput("lab_count", "# PLEOPODS / #Ovary")),
+      shiny::column(width = 4, shiny::textInput("lab_date", "LAB DATE (DDMMYY)"))
     )
   )
 
@@ -360,17 +397,13 @@ matinput <- function() {
           }
           if (identical(rv$form_type, "pleopod")) {
             return(shiny::tagList(shiny::titlePanel("CLRN SOM50 LAB PLEOPOD SAMPLE DATA FORM"), common_top,
-              trip_ui,
+              lab_info_ui,
               shiny::h3("SAMPLE INFORMATION"),
-              shiny::textInput("pl_count", "# PLEOPODS"),
-              shiny::textInput("pl_lab_date", "LAB DATE (DDMMYY)"),
               shiny::uiOutput("pleopod_rows"), export_ui, shiny::tableOutput("pleopod_table")))
           }
           shiny::tagList(shiny::titlePanel("CLRN SOM50 LAB OVARY SAMPLE DATA FORM"), common_top,
-            trip_ui,
+            lab_info_ui,
             shiny::h3("SAMPLE INFORMATION"),
-            shiny::textInput("ov_count", "# Ovary"),
-            shiny::textInput("ov_lab_date", "LAB DATE (DDMMYY)"),
             shiny::uiOutput("ovary_rows"), export_ui, shiny::tableOutput("ovary_table"))
         })
         shiny::observeEvent(input$choose_atsea, { rv$form_type <- "atsea" })
@@ -389,6 +422,7 @@ matinput <- function() {
             ""
           }
           shiny::updateTextInput(session, "trip_id", value = trip_id)
+          shiny::updateTextInput(session, "lab_trip_id", value = trip_id)
         })
 
         shiny::observe({
@@ -580,6 +614,7 @@ matinput <- function() {
             shiny::updateTextInput(session, "trip_port", value = rv$trip$port[1])
             shiny::updateSelectInput(session, "trip_lfa", selected = rv$trip$lfa[1])
             shiny::updateTextInput(session, "trip_sampler", value = rv$trip$sampler[1])
+            shiny::updateTextInput(session, "lab_trip_id", value = rv$trip$trip_id[1])
             next_string <- if (nrow(rv$strings) > 0) max(rv$strings$string_no, na.rm = TRUE) + 1 else 1
             shiny::updateNumericInput(session, "string_no", value = next_string)
             loaded_folder <- dirname(normalizePath(db_path, winslash = "/", mustWork = FALSE))
