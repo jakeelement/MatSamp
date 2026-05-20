@@ -7,18 +7,31 @@
 #' @import shiny
 #' @import DBI
 #' @import RSQLite
+#' @import shinyFeedback
 #' @export
 matinput <- function() {
+  na_if_empty <- function(x) if (is.character(x) && !nzchar(x)) NA_character_ else x
+
+  is_valid_ddmm <- function(x, type = c("lat", "long")) {
+    type <- match.arg(type)
+    if (!grepl("^\\d{4}\\.\\d{2}$", x)) return(FALSE)
+    deg <- as.integer(substr(x, 1, 2))
+    min <- as.integer(substr(x, 3, 4))
+    if (min > 59) return(FALSE)
+    if (type == "lat" && deg > 89) return(FALSE)
+    TRUE
+  }
+
   sample_row_ui <- function(i) {
     shiny::tags$div(
       id = paste0("sample_row_", i),
       shiny::fluidRow(
         shiny::column(width = 2, shiny::numericInput(paste0("lobster_no_", i), "LOBSTER #", value = NA, min = 1, step = 1)),
-        shiny::column(width = 2, shiny::numericInput(paste0("length_", i), "LENGTH", value = NA)),
-        shiny::column(width = 2, shiny::textInput(paste0("hardness_", i), "HARDNESS")),
-        shiny::column(width = 2, shiny::textInput(paste0("egg_", i), "EGG")),
-        shiny::column(width = 2, shiny::textInput(paste0("pleopod_", i), "PLEOPOD")),
-        shiny::column(width = 2, shiny::textInput(paste0("ovary_", i), "OVARY"))
+        shiny::column(width = 2, shiny::numericInput(paste0("length_", i), "LENGTH", value = NA, min = 0)),
+        shiny::column(width = 2, shiny::selectInput(paste0("hardness_", i), "HARDNESS", choices = c("", 1:5), selected = "")),
+        shiny::column(width = 2, shiny::selectInput(paste0("egg_", i), "EGG", choices = c("", 1:4), selected = "")),
+        shiny::column(width = 2, shiny::selectInput(paste0("pleopod_", i), "PLEOPOD", choices = c("", 0:1), selected = "")),
+        shiny::column(width = 2, shiny::selectInput(paste0("ovary_", i), "OVARY", choices = c("", 0:1), selected = ""))
       ),
       shiny::fluidRow(
         shiny::column(width = 12, shiny::textInput(paste0("comments_", i), "COMMENTS"))
@@ -184,12 +197,12 @@ matinput <- function() {
     shiny::h3("LOCATION INFORMATION (STRING#)"),
     shiny::fluidRow(
       shiny::column(width = 3, shiny::numericInput("string_no", "STRING #", value = NA, min = 1, step = 1)),
-      shiny::column(width = 3, shiny::textInput("lat", "LAT (DDMM.MM)")),
-      shiny::column(width = 3, shiny::textInput("long", "LONG (DDMM.MM)")),
-      shiny::column(width = 3, shiny::textInput("grid", "GRID"))
+      shiny::column(width = 3, htmltools::tagAppendAttributes(shiny::textInput("lat", "LAT (DDMM.MM)"), .cssSelector = "input", maxlength = "7")),
+      shiny::column(width = 3, htmltools::tagAppendAttributes(shiny::textInput("long", "LONG (DDMM.MM)"), .cssSelector = "input", maxlength = "7")),
+      shiny::column(width = 3, shiny::numericInput("grid", "GRID", value = NA, min = 1, step = 1))
     ),
     shiny::fluidRow(
-      shiny::column(width = 3, shiny::numericInput("depth", "DEPTH (FM)", value = NA)),
+      shiny::column(width = 3, shiny::numericInput("depth", "DEPTH (FM)", value = NA, min = 0)),
       shiny::column(width = 3, shiny::actionButton("next_string", "Next String / Update", class = "btn-primary"))
     )
   )
@@ -255,7 +268,21 @@ matinput <- function() {
               });
             }
 
-            disableNumericScroll('input[type=\"number\"]');
+            function preventBelowMin(target) {
+              $(target).on('input', function() {
+                var val = parseFloat(this.value);
+                var min = parseFloat(this.min);
+                if (!isNaN(val) && !isNaN(min) && val < min) {
+                  this.value = min;
+                  $(this).trigger('change');
+                }
+              });
+            }
+
+            $('input[type=\"number\"]').each(function() {
+              disableNumericScroll(this);
+              preventBelowMin(this);
+            });
 
             const observer = new MutationObserver(function(mutations) {
               mutations.forEach(function(mutation) {
@@ -263,13 +290,23 @@ matinput <- function() {
                   if (!(node instanceof Element)) return;
                   if ($(node).is('input[type=\"number\"]')) {
                     disableNumericScroll(node);
+                    preventBelowMin(node);
                   }
-                  disableNumericScroll($(node).find('input[type=\"number\"]'));
+                  $(node).find('input[type=\"number\"]').each(function() {
+                    disableNumericScroll(this);
+                    preventBelowMin(this);
+                  });
                 });
               });
             });
 
             observer.observe(document.body, { childList: true, subtree: true });
+          });
+        ")),
+        shinyFeedback::useShinyFeedback(),
+        shiny::tags$script(shiny::HTML("
+          Shiny.addCustomMessageHandler('toggleButtons', function(msg) {
+            $('button').prop('disabled', msg.disabled);
           });
         ")),
         shiny::titlePanel("CLRN SOM50 AT-SEA SAMPLE DATA FORM"),
@@ -296,6 +333,53 @@ matinput <- function() {
           db_status = "",
           has_selected_db_folder = FALSE
         )
+
+        shiny::observe({
+          lat <- input$lat
+          if (!nzchar(lat)) {
+            shinyFeedback::hideFeedback("lat")
+          } else {
+            shinyFeedback::feedbackDanger("lat", !is_valid_ddmm(lat, "lat"),
+              "Must be DDMM.MM — degrees 00–89, minutes 00–59 (e.g. 4430.55)")
+          }
+        })
+
+        shiny::observe({
+          long <- input$long
+          if (!nzchar(long)) {
+            shinyFeedback::hideFeedback("long")
+          } else {
+            shinyFeedback::feedbackDanger("long", !is_valid_ddmm(long, "long"),
+              "Must be DDMM.MM — minutes 00–59 (e.g. 6645.20)")
+          }
+        })
+
+        shiny::observe({
+          n      <- rv$sample_row_count
+          values <- sapply(seq_len(n), function(i) input[[paste0("lobster_no_", i)]])
+          non_na <- values[!is.na(values)]
+          dupes  <- unique(non_na[duplicated(non_na)])
+          for (i in seq_len(n)) {
+            v <- values[[i]]
+            shinyFeedback::feedbackDanger(
+              paste0("lobster_no_", i),
+              !is.na(v) && v %in% dupes,
+              "Duplicate LOBSTER #"
+            )
+          }
+        })
+
+        shiny::observe({
+          lat_error  <- nzchar(input$lat)  && !is_valid_ddmm(input$lat,  "lat")
+          long_error <- nzchar(input$long) && !is_valid_ddmm(input$long, "long")
+
+          n      <- rv$sample_row_count
+          values <- sapply(seq_len(n), function(i) input[[paste0("lobster_no_", i)]])
+          non_na <- values[!is.na(values)]
+          lobster_error <- any(duplicated(non_na))
+
+          session$sendCustomMessage("toggleButtons", list(disabled = lat_error || long_error || lobster_error))
+        })
 
         shiny::observe({
           i <- rv$sample_row_count
@@ -328,12 +412,12 @@ matinput <- function() {
         })
         shiny::observeEvent(input$save_trip, {
           rv$trip <- data.frame(
-            trip_id = input$trip_id,
-            org = input$trip_org,
-            date = as.character(input$trip_date),
-            port = input$trip_port,
-            lfa = input$trip_lfa,
-            sampler = input$trip_sampler,
+            trip_id = na_if_empty(input$trip_id),
+            org = na_if_empty(input$trip_org),
+            date = na_if_empty(as.character(input$trip_date)),
+            port = na_if_empty(input$trip_port),
+            lfa = na_if_empty(input$trip_lfa),
+            sampler = na_if_empty(input$trip_sampler),
             stringsAsFactors = FALSE
           )
         })
@@ -344,8 +428,8 @@ matinput <- function() {
           new_string <- data.frame(
             trip_id = input$trip_id,
             string_no = as.integer(input$string_no),
-            lat = input$lat,
-            long = input$long,
+            lat = na_if_empty(input$lat),
+            long = na_if_empty(input$long),
             grid = input$grid,
             depth = input$depth,
             stringsAsFactors = FALSE
@@ -360,11 +444,11 @@ matinput <- function() {
               string_no = as.integer(input$string_no),
               lobster_no = as.integer(lobster_no),
               length = input[[paste0("length_", i)]],
-              hardness = input[[paste0("hardness_", i)]],
-              egg = input[[paste0("egg_", i)]],
-              pleopod = input[[paste0("pleopod_", i)]],
-              ovary = input[[paste0("ovary_", i)]],
-              comments = input[[paste0("comments_", i)]],
+              hardness = na_if_empty(input[[paste0("hardness_", i)]]),
+              egg = na_if_empty(input[[paste0("egg_", i)]]),
+              pleopod = na_if_empty(input[[paste0("pleopod_", i)]]),
+              ovary = na_if_empty(input[[paste0("ovary_", i)]]),
+              comments = na_if_empty(input[[paste0("comments_", i)]]),
               stringsAsFactors = FALSE
             )
           })
@@ -374,7 +458,7 @@ matinput <- function() {
 
           shiny::updateTextInput(session, "lat", value = "")
           shiny::updateTextInput(session, "long", value = "")
-          shiny::updateTextInput(session, "grid", value = "")
+          shiny::updateNumericInput(session, "grid", value = NA)
           shiny::updateNumericInput(session, "depth", value = NA)
           shiny::updateNumericInput(session, "string_no", value = ifelse(is.na(input$string_no), NA, input$string_no + 1))
 
@@ -385,10 +469,10 @@ matinput <- function() {
 
           shiny::updateNumericInput(session, "lobster_no_1", value = NA)
           shiny::updateNumericInput(session, "length_1", value = NA)
-          shiny::updateTextInput(session, "hardness_1", value = "")
-          shiny::updateTextInput(session, "egg_1", value = "")
-          shiny::updateTextInput(session, "pleopod_1", value = "")
-          shiny::updateTextInput(session, "ovary_1", value = "")
+          shiny::updateSelectInput(session, "hardness_1", selected = "")
+          shiny::updateSelectInput(session, "egg_1", selected = "")
+          shiny::updateSelectInput(session, "pleopod_1", selected = "")
+          shiny::updateSelectInput(session, "ovary_1", selected = "")
           shiny::updateTextInput(session, "comments_1", value = "")
         })
 

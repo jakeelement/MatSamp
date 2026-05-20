@@ -9,6 +9,8 @@ Encoding: UTF-8
 LazyData: true
 Imports:
     shiny,
+    htmltools,
     DBI,
-    RSQLite
+    RSQLite,
+    shinyFeedback
 Config/roxygen2/version: 8.0.0
