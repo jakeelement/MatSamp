@@ -12,6 +12,15 @@
 matinput <- function() {
   na_if_empty <- function(x) if (is.character(x) && !nzchar(x)) NA_character_ else x
 
+  with_topmost_tk <- function(f) {
+    tt <- tcltk::tktoplevel()
+    on.exit(tcltk::tkdestroy(tt))
+    tcltk::tkwm.geometry(tt, "1x1+0+0")
+    tcltk::tcl("wm", "attributes", tt, "-topmost", TRUE)
+    tcltk::tkfocus(tt)
+    f()
+  }
+
   is_valid_ddmm <- function(x, type = c("lat", "long")) {
     type <- match.arg(type)
     if (!grepl("^\\d{4}\\.\\d{2}$", x)) return(FALSE)
@@ -180,13 +189,15 @@ matinput <- function() {
   trip_ui <- shiny::tagList(
     shiny::h3("TRIP INFORMATION"),
     shiny::fluidRow(
-      shiny::column(width = 3, shiny::textInput("trip_id", "TRIPID")),
+      shiny::column(width = 3, htmltools::tagAppendAttributes(shiny::textInput("trip_id", "TRIPID"), .cssSelector = "input", readonly = "readonly")),
       shiny::column(width = 3, shiny::textInput("trip_org", "ORG.")),
       shiny::column(width = 3, shiny::dateInput("trip_date", "DATE")),
       shiny::column(width = 3, shiny::textInput("trip_port", "PORT"))
     ),
     shiny::fluidRow(
-      shiny::column(width = 3, shiny::textInput("trip_lfa", "LFA")),
+      shiny::column(width = 3, shiny::selectInput("trip_lfa", "LFA",
+        choices = c("", "27", "28", "29", "30", "31A", "31B", "32", "33", "34", "35", "36", "37A", "37B", "38"),
+        selected = "")),
       shiny::column(width = 6, shiny::textInput("trip_sampler", "SAMPLER")),
       shiny::column(width = 3, shiny::actionButton("save_trip", "Create / Update Trip", class = "btn-primary"))
     )
@@ -335,6 +346,17 @@ matinput <- function() {
         )
 
         shiny::observe({
+          org  <- input$trip_org
+          date <- input$trip_date
+          trip_id <- if (!is.null(date) && nzchar(org)) {
+            paste0(org, format(date, "%d%m%y"))
+          } else {
+            ""
+          }
+          shiny::updateTextInput(session, "trip_id", value = trip_id)
+        })
+
+        shiny::observe({
           lat <- input$lat
           if (!nzchar(lat)) {
             shinyFeedback::hideFeedback("lat")
@@ -403,7 +425,7 @@ matinput <- function() {
         })
 
         shiny::observeEvent(input$choose_db_folder, {
-          selected_dir <- tcltk::tk_choose.dir(default = input$db_folder, caption = "Choose save directory")
+          selected_dir <- with_topmost_tk(function() tcltk::tk_choose.dir(default = input$db_folder, caption = "Choose save directory"))
           if (!is.null(selected_dir) && nzchar(selected_dir)) {
             shiny::updateTextInput(session, "db_folder", value = selected_dir)
             rv$has_selected_db_folder <- TRUE
@@ -493,7 +515,7 @@ matinput <- function() {
         })
 
         shiny::observeEvent(input$load_db_file, {
-          db_path_tcl <- tcltk::tkgetOpenFile(filetypes = "{{Database files} {.db}} {{All files} *}", title = "Choose trip database")
+          db_path_tcl <- with_topmost_tk(function() tcltk::tkgetOpenFile(filetypes = "{{Database files} {.db}} {{All files} *}", title = "Choose trip database"))
           db_path <- as.character(tcltk::tclvalue(db_path_tcl))
           if (!nzchar(db_path)) return()
           if (!file.exists(db_path)) {
@@ -507,11 +529,10 @@ matinput <- function() {
             rv$strings <- loaded$strings
             rv$samples <- loaded$samples
 
-            shiny::updateTextInput(session, "trip_id", value = rv$trip$trip_id[1])
             shiny::updateTextInput(session, "trip_org", value = rv$trip$org[1])
             shiny::updateDateInput(session, "trip_date", value = rv$trip$date[1])
             shiny::updateTextInput(session, "trip_port", value = rv$trip$port[1])
-            shiny::updateTextInput(session, "trip_lfa", value = rv$trip$lfa[1])
+            shiny::updateSelectInput(session, "trip_lfa", selected = rv$trip$lfa[1])
             shiny::updateTextInput(session, "trip_sampler", value = rv$trip$sampler[1])
             next_string <- if (nrow(rv$strings) > 0) max(rv$strings$string_no, na.rm = TRUE) + 1 else 1
             shiny::updateNumericInput(session, "string_no", value = next_string)
