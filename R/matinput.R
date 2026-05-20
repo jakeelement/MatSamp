@@ -75,7 +75,7 @@ matinput <- function() {
     )
   }
 
-  write_to_db <- function(db_path, trip_df, string_df, sample_df) {
+  write_to_db <- function(db_path, trip_df, string_df, sample_df, pleopod_df = data.frame(), ovary_df = data.frame()) {
     con <- DBI::dbConnect(RSQLite::SQLite(), dbname = db_path)
     on.exit(DBI::dbDisconnect(con), add = TRUE)
 
@@ -121,8 +121,46 @@ matinput <- function() {
       )
     ")
 
+    DBI::dbExecute(con, "
+      CREATE TABLE IF NOT EXISTS LAB_PLEOPOD (
+        TRIPID TEXT NOT NULL,
+        LAB_COUNT TEXT,
+        LAB_DATE TEXT,
+        ROW_NO INTEGER NOT NULL,
+        LOBSTER_NO INTEGER,
+        CG_STAGE TEXT,
+        MOULT_STAGE TEXT,
+        IMAGE_FILE TEXT,
+        OBSERVER TEXT,
+        PRIMARY KEY (TRIPID, ROW_NO),
+        FOREIGN KEY (TRIPID) REFERENCES TRIP(TRIPID)
+      )
+    ")
+
+    DBI::dbExecute(con, "
+      CREATE TABLE IF NOT EXISTS LAB_OVARY (
+        TRIPID TEXT NOT NULL,
+        LAB_COUNT TEXT,
+        LAB_DATE TEXT,
+        ROW_NO INTEGER NOT NULL,
+        LOBSTER_NO INTEGER,
+        LENGTH REAL,
+        WHOLE_W REAL,
+        GASTROLITH TEXT,
+        OVARY_COLOUR TEXT,
+        YELLOW_SPOTS TEXT,
+        OVARY_WEIGHT REAL,
+        IMAGE_COMMENTS TEXT,
+        OBSERVER TEXT,
+        PRIMARY KEY (TRIPID, ROW_NO),
+        FOREIGN KEY (TRIPID) REFERENCES TRIP(TRIPID)
+      )
+    ")
+
     if (!is.null(trip_df) && nrow(trip_df) > 0) {
       DBI::dbExecute(con, "DELETE FROM SAMPLE WHERE TRIPID = ?", params = list(trip_df$trip_id[1]))
+      DBI::dbExecute(con, "DELETE FROM LAB_PLEOPOD WHERE TRIPID = ?", params = list(trip_df$trip_id[1]))
+      DBI::dbExecute(con, "DELETE FROM LAB_OVARY WHERE TRIPID = ?", params = list(trip_df$trip_id[1]))
       DBI::dbExecute(con, "DELETE FROM STRING_INFO WHERE TRIPID = ?", params = list(trip_df$trip_id[1]))
       DBI::dbExecute(con, "DELETE FROM TRIP WHERE TRIPID = ?", params = list(trip_df$trip_id[1]))
       DBI::dbExecute(con, "INSERT INTO TRIP (TRIPID, ORG, TRIP_DATE, PORT, LFA, SAMPLER) VALUES (?, ?, ?, ?, ?, ?)",
@@ -170,6 +208,14 @@ matinput <- function() {
         row.names = FALSE
       )
     }
+
+    if (nrow(pleopod_df) > 0) {
+      DBI::dbWriteTable(con, "LAB_PLEOPOD", pleopod_df, append = TRUE, row.names = FALSE)
+    }
+
+    if (nrow(ovary_df) > 0) {
+      DBI::dbWriteTable(con, "LAB_OVARY", ovary_df, append = TRUE, row.names = FALSE)
+    }
   }
 
   read_from_db <- function(db_path) {
@@ -195,6 +241,18 @@ matinput <- function() {
       data.frame()
     }
 
+    pleopod_df <- if (DBI::dbExistsTable(con, "LAB_PLEOPOD")) {
+      DBI::dbGetQuery(con, "SELECT * FROM LAB_PLEOPOD WHERE TRIPID = ? ORDER BY ROW_NO", params = list(trip_id))
+    } else {
+      data.frame()
+    }
+
+    ovary_df <- if (DBI::dbExistsTable(con, "LAB_OVARY")) {
+      DBI::dbGetQuery(con, "SELECT * FROM LAB_OVARY WHERE TRIPID = ? ORDER BY ROW_NO", params = list(trip_id))
+    } else {
+      data.frame()
+    }
+
     list(
       trip = data.frame(
         trip_id = trip_df$TRIPID, org = trip_df$ORG, date = trip_df$TRIP_DATE,
@@ -208,7 +266,9 @@ matinput <- function() {
         trip_id = sample_df$TRIPID, string_no = sample_df$STRING_NO, lobster_no = sample_df$LOBSTER_NO,
         length = sample_df$LENGTH, hardness = sample_df$HARDNESS, egg = sample_df$EGG,
         pleopod = sample_df$PLEOPOD, ovary = sample_df$OVARY, comments = sample_df$COMMENTS, stringsAsFactors = FALSE
-      )
+      ),
+      pleopod = pleopod_df,
+      ovary = ovary_df
     )
   }
 
@@ -374,6 +434,8 @@ matinput <- function() {
           trip = NULL,
           strings = data.frame(),
           samples = data.frame(),
+          lab_pleopod = data.frame(),
+          lab_ovary = data.frame(),
           sample_row_count = 1,
           db_status = "",
           has_selected_db_folder = FALSE
@@ -587,7 +649,45 @@ matinput <- function() {
 
           db_path <- file.path(input$db_folder, paste0("MAT_", rv$trip$trip_id[1], ".db"))
           tryCatch({
-            write_to_db(db_path, rv$trip, rv$strings, rv$samples)
+            if (identical(rv$form_type, "pleopod")) {
+              rv$lab_pleopod <- do.call(rbind, lapply(seq_len(10), function(i) {
+                data.frame(
+                  TRIPID = rv$trip$trip_id[1],
+                  LAB_COUNT = na_if_empty(input$lab_count),
+                  LAB_DATE = na_if_empty(input$lab_date),
+                  ROW_NO = i,
+                  LOBSTER_NO = input[[paste0("pl_lobster_no_", i)]],
+                  CG_STAGE = na_if_empty(input[[paste0("pl_cg_stage_", i)]]),
+                  MOULT_STAGE = na_if_empty(input[[paste0("pl_moult_stage_", i)]]),
+                  IMAGE_FILE = na_if_empty(input[[paste0("pl_image_", i)]]),
+                  OBSERVER = na_if_empty(input[[paste0("pl_observer_", i)]]),
+                  stringsAsFactors = FALSE
+                )
+              }))
+            }
+
+            if (identical(rv$form_type, "ovary")) {
+              rv$lab_ovary <- do.call(rbind, lapply(seq_len(10), function(i) {
+                data.frame(
+                  TRIPID = rv$trip$trip_id[1],
+                  LAB_COUNT = na_if_empty(input$lab_count),
+                  LAB_DATE = na_if_empty(input$lab_date),
+                  ROW_NO = i,
+                  LOBSTER_NO = input[[paste0("ov_lobster_no_", i)]],
+                  LENGTH = input[[paste0("ov_length_", i)]],
+                  WHOLE_W = input[[paste0("ov_whole_w_", i)]],
+                  GASTROLITH = na_if_empty(input[[paste0("ov_gastrolith_", i)]]),
+                  OVARY_COLOUR = na_if_empty(input[[paste0("ov_colour_", i)]]),
+                  YELLOW_SPOTS = na_if_empty(input[[paste0("ov_yellow_", i)]]),
+                  OVARY_WEIGHT = input[[paste0("ov_weight_", i)]],
+                  IMAGE_COMMENTS = na_if_empty(input[[paste0("ov_image_", i)]]),
+                  OBSERVER = na_if_empty(input[[paste0("ov_observer_", i)]]),
+                  stringsAsFactors = FALSE
+                )
+              }))
+            }
+
+            write_to_db(db_path, rv$trip, rv$strings, rv$samples, rv$lab_pleopod, rv$lab_ovary)
             rv$db_status <- paste("Saved database:", db_path)
           }, error = function(e) {
             rv$db_status <- paste("Database save failed:", conditionMessage(e))
@@ -608,6 +708,8 @@ matinput <- function() {
             rv$trip <- loaded$trip
             rv$strings <- loaded$strings
             rv$samples <- loaded$samples
+            rv$lab_pleopod <- loaded$pleopod
+            rv$lab_ovary <- loaded$ovary
 
             shiny::updateTextInput(session, "trip_org", value = rv$trip$org[1])
             shiny::updateDateInput(session, "trip_date", value = rv$trip$date[1])
@@ -615,6 +717,36 @@ matinput <- function() {
             shiny::updateSelectInput(session, "trip_lfa", selected = rv$trip$lfa[1])
             shiny::updateTextInput(session, "trip_sampler", value = rv$trip$sampler[1])
             shiny::updateTextInput(session, "lab_trip_id", value = rv$trip$trip_id[1])
+            if (identical(rv$form_type, "pleopod") && nrow(rv$lab_pleopod) > 0) {
+              shiny::updateTextInput(session, "lab_count", value = as.character(rv$lab_pleopod$LAB_COUNT[1]))
+              shiny::updateTextInput(session, "lab_date", value = as.character(rv$lab_pleopod$LAB_DATE[1]))
+            }
+            if (identical(rv$form_type, "ovary") && nrow(rv$lab_ovary) > 0) {
+              shiny::updateTextInput(session, "lab_count", value = as.character(rv$lab_ovary$LAB_COUNT[1]))
+              shiny::updateTextInput(session, "lab_date", value = as.character(rv$lab_ovary$LAB_DATE[1]))
+            }
+            if (nrow(rv$lab_pleopod) > 0) {
+              for (i in seq_len(min(10, nrow(rv$lab_pleopod)))) {
+                shiny::updateNumericInput(session, paste0("pl_lobster_no_", i), value = rv$lab_pleopod$LOBSTER_NO[i])
+                shiny::updateTextInput(session, paste0("pl_cg_stage_", i), value = rv$lab_pleopod$CG_STAGE[i])
+                shiny::updateTextInput(session, paste0("pl_moult_stage_", i), value = rv$lab_pleopod$MOULT_STAGE[i])
+                shiny::updateTextInput(session, paste0("pl_image_", i), value = rv$lab_pleopod$IMAGE_FILE[i])
+                shiny::updateTextInput(session, paste0("pl_observer_", i), value = rv$lab_pleopod$OBSERVER[i])
+              }
+            }
+            if (nrow(rv$lab_ovary) > 0) {
+              for (i in seq_len(min(10, nrow(rv$lab_ovary)))) {
+                shiny::updateNumericInput(session, paste0("ov_lobster_no_", i), value = rv$lab_ovary$LOBSTER_NO[i])
+                shiny::updateNumericInput(session, paste0("ov_length_", i), value = rv$lab_ovary$LENGTH[i])
+                shiny::updateNumericInput(session, paste0("ov_whole_w_", i), value = rv$lab_ovary$WHOLE_W[i])
+                shiny::updateTextInput(session, paste0("ov_gastrolith_", i), value = rv$lab_ovary$GASTROLITH[i])
+                shiny::updateTextInput(session, paste0("ov_colour_", i), value = rv$lab_ovary$OVARY_COLOUR[i])
+                shiny::updateTextInput(session, paste0("ov_yellow_", i), value = rv$lab_ovary$YELLOW_SPOTS[i])
+                shiny::updateNumericInput(session, paste0("ov_weight_", i), value = rv$lab_ovary$OVARY_WEIGHT[i])
+                shiny::updateTextInput(session, paste0("ov_image_", i), value = rv$lab_ovary$IMAGE_COMMENTS[i])
+                shiny::updateTextInput(session, paste0("ov_observer_", i), value = rv$lab_ovary$OBSERVER[i])
+              }
+            }
             next_string <- if (nrow(rv$strings) > 0) max(rv$strings$string_no, na.rm = TRUE) + 1 else 1
             shiny::updateNumericInput(session, "string_no", value = next_string)
             loaded_folder <- dirname(normalizePath(db_path, winslash = "/", mustWork = FALSE))
@@ -630,6 +762,8 @@ matinput <- function() {
         output$trip_table <- shiny::renderTable(rv$trip)
         output$string_table <- shiny::renderTable(rv$strings)
         output$sample_table <- shiny::renderTable(rv$samples)
+        output$pleopod_table <- shiny::renderTable(rv$lab_pleopod)
+        output$ovary_table <- shiny::renderTable(rv$lab_ovary)
       }
     )
   )
