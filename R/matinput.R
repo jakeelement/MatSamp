@@ -11,6 +11,9 @@
 #' @export
 matinput <- function() {
   na_if_empty <- function(x) if (is.character(x) && !nzchar(x)) NA_character_ else x
+  format_lobster_id <- function(trip_id, string_no, lobster_no) {
+    paste0(trip_id, sprintf("%02d%02d", as.integer(string_no), as.integer(lobster_no)))
+  }
 
   with_topmost_tk <- function(f) {
     tt <- tcltk::tktoplevel()
@@ -51,19 +54,19 @@ matinput <- function() {
 
 
 
-  pleopod_row_ui <- function(i) {
+  pleopod_row_ui <- function(i, lobster_id = "") {
     shiny::fluidRow(
-      shiny::column(width = 2, shiny::numericInput(paste0("pl_lobster_no_", i), if (i == 1) "LOBSTER #" else NULL, value = NA, min = 1, step = 1)),
+      shiny::column(width = 3, htmltools::tagAppendAttributes(shiny::textInput(paste0("pl_lobster_id_", i), if (i == 1) "LOBSTER ID" else NULL, value = lobster_id), .cssSelector = "input", readonly = "readonly")),
       shiny::column(width = 2, shiny::textInput(paste0("pl_cg_stage_", i), if (i == 1) "CG STAGE" else NULL)),
       shiny::column(width = 2, shiny::textInput(paste0("pl_moult_stage_", i), if (i == 1) "MOULT STAGE" else NULL)),
-      shiny::column(width = 4, shiny::textInput(paste0("pl_image_", i), if (i == 1) "PLEOPOD IMAGE FILE NAME(S)" else NULL)),
+      shiny::column(width = 3, shiny::textInput(paste0("pl_image_", i), if (i == 1) "PLEOPOD IMAGE FILE NAME(S)" else NULL)),
       shiny::column(width = 2, shiny::textInput(paste0("pl_observer_", i), if (i == 1) "OBSERVER" else NULL))
     )
   }
 
-  ovary_row_ui <- function(i) {
+  ovary_row_ui <- function(i, lobster_id = "") {
     shiny::fluidRow(
-      shiny::column(width = 1, shiny::numericInput(paste0("ov_lobster_no_", i), if (i == 1) "LOBSTER #" else NULL, value = NA, min = 1, step = 1)),
+      shiny::column(width = 2, htmltools::tagAppendAttributes(shiny::textInput(paste0("ov_lobster_id_", i), if (i == 1) "LOBSTER ID" else NULL, value = lobster_id), .cssSelector = "input", readonly = "readonly")),
       shiny::column(width = 1, shiny::numericInput(paste0("ov_length_", i), if (i == 1) "LENGTH" else NULL, value = NA, min = 0)),
       shiny::column(width = 1, shiny::numericInput(paste0("ov_whole_w_", i), if (i == 1) "Whole W." else NULL, value = NA, min = 0)),
       shiny::column(width = 1, shiny::textInput(paste0("ov_gastrolith_", i), if (i == 1) "GASTROLITH" else NULL)),
@@ -109,14 +112,14 @@ matinput <- function() {
       CREATE TABLE IF NOT EXISTS SAMPLE (
         TRIPID TEXT NOT NULL,
         STRING_NO INTEGER NOT NULL,
-        LOBSTER_NO INTEGER NOT NULL,
+        LOBSTER_ID TEXT NOT NULL,
         LENGTH REAL,
         HARDNESS TEXT,
         EGG TEXT,
         PLEOPOD TEXT,
         OVARY TEXT,
         COMMENTS TEXT,
-        PRIMARY KEY (TRIPID, STRING_NO, LOBSTER_NO),
+        PRIMARY KEY (TRIPID, LOBSTER_ID),
         FOREIGN KEY (TRIPID, STRING_NO) REFERENCES STRING_INFO(TRIPID, STRING_NO)
       )
     ")
@@ -127,13 +130,13 @@ matinput <- function() {
         LAB_COUNT TEXT,
         LAB_DATE TEXT,
         ROW_NO INTEGER NOT NULL,
-        LOBSTER_NO INTEGER,
+        LOBSTER_ID TEXT,
         CG_STAGE TEXT,
         MOULT_STAGE TEXT,
         IMAGE_FILE TEXT,
         OBSERVER TEXT,
         PRIMARY KEY (TRIPID, ROW_NO),
-        FOREIGN KEY (TRIPID) REFERENCES TRIP(TRIPID)
+        FOREIGN KEY (TRIPID, LOBSTER_ID) REFERENCES SAMPLE(TRIPID, LOBSTER_ID)
       )
     ")
 
@@ -143,7 +146,7 @@ matinput <- function() {
         LAB_COUNT TEXT,
         LAB_DATE TEXT,
         ROW_NO INTEGER NOT NULL,
-        LOBSTER_NO INTEGER,
+        LOBSTER_ID TEXT,
         LENGTH REAL,
         WHOLE_W REAL,
         GASTROLITH TEXT,
@@ -153,7 +156,7 @@ matinput <- function() {
         IMAGE_COMMENTS TEXT,
         OBSERVER TEXT,
         PRIMARY KEY (TRIPID, ROW_NO),
-        FOREIGN KEY (TRIPID) REFERENCES TRIP(TRIPID)
+        FOREIGN KEY (TRIPID, LOBSTER_ID) REFERENCES SAMPLE(TRIPID, LOBSTER_ID)
       )
     ")
 
@@ -195,7 +198,7 @@ matinput <- function() {
         data.frame(
           TRIPID = sample_df$trip_id,
           STRING_NO = sample_df$string_no,
-          LOBSTER_NO = sample_df$lobster_no,
+          LOBSTER_ID = sample_df$lobster_id,
           LENGTH = sample_df$length,
           HARDNESS = sample_df$hardness,
           EGG = sample_df$egg,
@@ -236,7 +239,7 @@ matinput <- function() {
     }
 
     sample_df <- if (DBI::dbExistsTable(con, "SAMPLE")) {
-      DBI::dbGetQuery(con, "SELECT TRIPID, STRING_NO, LOBSTER_NO, LENGTH, HARDNESS, EGG, PLEOPOD, OVARY, COMMENTS FROM SAMPLE WHERE TRIPID = ? ORDER BY STRING_NO, LOBSTER_NO", params = list(trip_id))
+      DBI::dbGetQuery(con, "SELECT TRIPID, STRING_NO, LOBSTER_ID, LENGTH, HARDNESS, EGG, PLEOPOD, OVARY, COMMENTS FROM SAMPLE WHERE TRIPID = ? ORDER BY LOBSTER_ID", params = list(trip_id))
     } else {
       data.frame()
     }
@@ -263,7 +266,7 @@ matinput <- function() {
         long = string_df$LONG, grid = string_df$GRID, depth = string_df$DEPTH, stringsAsFactors = FALSE
       ),
       samples = data.frame(
-        trip_id = sample_df$TRIPID, string_no = sample_df$STRING_NO, lobster_no = sample_df$LOBSTER_NO,
+        trip_id = sample_df$TRIPID, string_no = sample_df$STRING_NO, lobster_id = sample_df$LOBSTER_ID,
         length = sample_df$LENGTH, hardness = sample_df$HARDNESS, egg = sample_df$EGG,
         pleopod = sample_df$PLEOPOD, ovary = sample_df$OVARY, comments = sample_df$COMMENTS, stringsAsFactors = FALSE
       ),
@@ -436,6 +439,7 @@ matinput <- function() {
           samples = data.frame(),
           lab_pleopod = data.frame(),
           lab_ovary = data.frame(),
+          lab_lobster_ids = character(),
           sample_row_count = 1,
           db_status = "",
           has_selected_db_folder = FALSE
@@ -469,10 +473,24 @@ matinput <- function() {
             shiny::uiOutput("ovary_rows"), export_ui, shiny::tableOutput("ovary_table"))
         })
         shiny::observeEvent(input$choose_atsea, { rv$form_type <- "atsea" })
-        shiny::observeEvent(input$choose_pleopod, { rv$form_type <- "pleopod" })
-        shiny::observeEvent(input$choose_ovary, { rv$form_type <- "ovary" })
-        output$pleopod_rows <- shiny::renderUI(shiny::tagList(lapply(1:10, pleopod_row_ui)))
-        output$ovary_rows <- shiny::renderUI(shiny::tagList(lapply(1:10, ovary_row_ui)))
+        shiny::observeEvent(input$choose_pleopod, {
+          rv$form_type <- "pleopod"
+          rv$lab_lobster_ids <- unique(rv$samples$lobster_id)
+        })
+        shiny::observeEvent(input$choose_ovary, {
+          rv$form_type <- "ovary"
+          rv$lab_lobster_ids <- unique(rv$samples$lobster_id)
+        })
+        output$pleopod_rows <- shiny::renderUI({
+          ids <- rv$lab_lobster_ids
+          if (length(ids) == 0) return(NULL)
+          shiny::tagList(lapply(seq_along(ids), function(i) pleopod_row_ui(i, ids[[i]])))
+        })
+        output$ovary_rows <- shiny::renderUI({
+          ids <- rv$lab_lobster_ids
+          if (length(ids) == 0) return(NULL)
+          shiny::tagList(lapply(seq_along(ids), function(i) ovary_row_ui(i, ids[[i]])))
+        })
 
         shiny::observe({
           shiny::req(!is.null(input$trip_org), !is.null(input$trip_date))
@@ -606,7 +624,7 @@ matinput <- function() {
             data.frame(
               trip_id = input$trip_id,
               string_no = as.integer(input$string_no),
-              lobster_no = as.integer(lobster_no),
+              lobster_id = format_lobster_id(input$trip_id, input$string_no, lobster_no),
               length = input[[paste0("length_", i)]],
               hardness = na_if_empty(input[[paste0("hardness_", i)]]),
               egg = na_if_empty(input[[paste0("egg_", i)]]),
@@ -650,13 +668,13 @@ matinput <- function() {
           db_path <- file.path(input$db_folder, paste0("MAT_", rv$trip$trip_id[1], ".db"))
           tryCatch({
             if (identical(rv$form_type, "pleopod")) {
-              rv$lab_pleopod <- do.call(rbind, lapply(seq_len(10), function(i) {
+              rv$lab_pleopod <- do.call(rbind, lapply(seq_along(rv$lab_lobster_ids), function(i) {
                 data.frame(
                   TRIPID = rv$trip$trip_id[1],
                   LAB_COUNT = na_if_empty(input$lab_count),
                   LAB_DATE = na_if_empty(input$lab_date),
                   ROW_NO = i,
-                  LOBSTER_NO = input[[paste0("pl_lobster_no_", i)]],
+                  LOBSTER_ID = input[[paste0("pl_lobster_id_", i)]],
                   CG_STAGE = na_if_empty(input[[paste0("pl_cg_stage_", i)]]),
                   MOULT_STAGE = na_if_empty(input[[paste0("pl_moult_stage_", i)]]),
                   IMAGE_FILE = na_if_empty(input[[paste0("pl_image_", i)]]),
@@ -667,13 +685,13 @@ matinput <- function() {
             }
 
             if (identical(rv$form_type, "ovary")) {
-              rv$lab_ovary <- do.call(rbind, lapply(seq_len(10), function(i) {
+              rv$lab_ovary <- do.call(rbind, lapply(seq_along(rv$lab_lobster_ids), function(i) {
                 data.frame(
                   TRIPID = rv$trip$trip_id[1],
                   LAB_COUNT = na_if_empty(input$lab_count),
                   LAB_DATE = na_if_empty(input$lab_date),
                   ROW_NO = i,
-                  LOBSTER_NO = input[[paste0("ov_lobster_no_", i)]],
+                  LOBSTER_ID = input[[paste0("ov_lobster_id_", i)]],
                   LENGTH = input[[paste0("ov_length_", i)]],
                   WHOLE_W = input[[paste0("ov_whole_w_", i)]],
                   GASTROLITH = na_if_empty(input[[paste0("ov_gastrolith_", i)]]),
@@ -708,6 +726,7 @@ matinput <- function() {
             rv$trip <- loaded$trip
             rv$strings <- loaded$strings
             rv$samples <- loaded$samples
+            rv$lab_lobster_ids <- unique(loaded$samples$lobster_id)
             rv$lab_pleopod <- loaded$pleopod
             rv$lab_ovary <- loaded$ovary
 
@@ -726,8 +745,8 @@ matinput <- function() {
               shiny::updateTextInput(session, "lab_date", value = as.character(rv$lab_ovary$LAB_DATE[1]))
             }
             if (nrow(rv$lab_pleopod) > 0) {
-              for (i in seq_len(min(10, nrow(rv$lab_pleopod)))) {
-                shiny::updateNumericInput(session, paste0("pl_lobster_no_", i), value = rv$lab_pleopod$LOBSTER_NO[i])
+              for (i in seq_len(min(length(rv$lab_lobster_ids), nrow(rv$lab_pleopod)))) {
+                shiny::updateTextInput(session, paste0("pl_lobster_id_", i), value = rv$lab_pleopod$LOBSTER_ID[i])
                 shiny::updateTextInput(session, paste0("pl_cg_stage_", i), value = rv$lab_pleopod$CG_STAGE[i])
                 shiny::updateTextInput(session, paste0("pl_moult_stage_", i), value = rv$lab_pleopod$MOULT_STAGE[i])
                 shiny::updateTextInput(session, paste0("pl_image_", i), value = rv$lab_pleopod$IMAGE_FILE[i])
@@ -735,8 +754,8 @@ matinput <- function() {
               }
             }
             if (nrow(rv$lab_ovary) > 0) {
-              for (i in seq_len(min(10, nrow(rv$lab_ovary)))) {
-                shiny::updateNumericInput(session, paste0("ov_lobster_no_", i), value = rv$lab_ovary$LOBSTER_NO[i])
+              for (i in seq_len(min(length(rv$lab_lobster_ids), nrow(rv$lab_ovary)))) {
+                shiny::updateTextInput(session, paste0("ov_lobster_id_", i), value = rv$lab_ovary$LOBSTER_ID[i])
                 shiny::updateNumericInput(session, paste0("ov_length_", i), value = rv$lab_ovary$LENGTH[i])
                 shiny::updateNumericInput(session, paste0("ov_whole_w_", i), value = rv$lab_ovary$WHOLE_W[i])
                 shiny::updateTextInput(session, paste0("ov_gastrolith_", i), value = rv$lab_ovary$GASTROLITH[i])
