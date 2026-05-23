@@ -161,9 +161,9 @@ matinput <- function() {
     ")
 
     if (!is.null(trip_df) && nrow(trip_df) > 0) {
-      DBI::dbExecute(con, "DELETE FROM SAMPLE WHERE TRIPID = ?", params = list(trip_df$trip_id[1]))
       DBI::dbExecute(con, "DELETE FROM LAB_PLEOPOD WHERE TRIPID = ?", params = list(trip_df$trip_id[1]))
       DBI::dbExecute(con, "DELETE FROM LAB_OVARY WHERE TRIPID = ?", params = list(trip_df$trip_id[1]))
+      DBI::dbExecute(con, "DELETE FROM SAMPLE WHERE TRIPID = ?", params = list(trip_df$trip_id[1]))
       DBI::dbExecute(con, "DELETE FROM STRING_INFO WHERE TRIPID = ?", params = list(trip_df$trip_id[1]))
       DBI::dbExecute(con, "DELETE FROM TRIP WHERE TRIPID = ?", params = list(trip_df$trip_id[1]))
       DBI::dbExecute(con, "INSERT INTO TRIP (TRIPID, ORG, TRIP_DATE, PORT, LFA, SAMPLER) VALUES (?, ?, ?, ?, ?, ?)",
@@ -574,10 +574,12 @@ matinput <- function() {
         shiny::observeEvent(input$choose_pleopod, {
           rv$form_type <- "pleopod"
           fill_lab_forms()
+          session$onFlushed(function() fill_lab_row_values(), once = TRUE)
         })
         shiny::observeEvent(input$choose_ovary, {
           rv$form_type <- "ovary"
           fill_lab_forms()
+          session$onFlushed(function() fill_lab_row_values(), once = TRUE)
         })
         output$pleopod_rows <- shiny::renderUI({
           ids <- rv$lab_lobster_ids
@@ -844,7 +846,7 @@ matinput <- function() {
             shiny::updateTextInput(session, "trip_sampler", value = rv$trip$sampler[1])
             rv$lab_context_loaded <- TRUE
             fill_lab_forms()
-            fill_lab_row_values()
+            session$onFlushed(function() fill_lab_row_values(), once = TRUE)
             first_string <- if (nrow(rv$strings) > 0) min(rv$strings$string_no, na.rm = TRUE) else 1
             shiny::updateNumericInput(session, "string_no", value = first_string)
             fill_atsea_for_string(first_string)
