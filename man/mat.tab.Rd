@@ -7,18 +7,18 @@
 mat.tab(db_path = NULL, table = NULL, view = interactive())
 }
 \arguments{
-\item{db_path}{Optional path to a \code{.db} file. If \code{NULL}, \code{file.choose()} is used.}
+\item{db_path}{Optional path to a `.db` file. If `NULL`, `file.choose()` is used.}
 
 \item{table}{Optional table name. If provided, returns only that table.}
 
-\item{view}{Logical; if \code{TRUE}, open returned table(s) in the RStudio data viewer.}
+\item{view}{Logical; if `TRUE`, open returned table(s) in the RStudio data viewer.}
 }
 \value{
-A data frame when \code{table} is provided, otherwise a named list of
- data frames for all tables in the database.
+A data frame when `table` is provided, otherwise a named list of
+  data frames for all tables in the database.
 }
 \description{
-Opens a file chooser for a local \code{.db} file (unless \code{db_path} is supplied),
+Opens a file chooser for a local `.db` file (unless `db_path` is supplied),
 then reads and returns table data from that database. In interactive sessions,
 tables can also be opened in the RStudio data viewer.
 }
