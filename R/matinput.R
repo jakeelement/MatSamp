@@ -506,8 +506,9 @@ matinput <- function() {
           }
         }
 
-        fill_lab_row_values <- function() {
-          if (identical(rv$form_type, "pleopod") && nrow(rv$lab_pleopod) > 0) {
+        fill_lab_row_values <- function(form_type = NULL) {
+          if (is.null(form_type)) form_type <- isolate(rv$form_type)
+          if (identical(form_type, "pleopod") && nrow(rv$lab_pleopod) > 0) {
             for (i in seq_len(min(length(rv$lab_lobster_ids), nrow(rv$lab_pleopod)))) {
               shiny::updateTextInput(session, paste0("pl_lobster_id_", i), value = rv$lab_lobster_ids[i])
               shiny::updateTextInput(session, paste0("pl_cg_stage_", i), value = rv$lab_pleopod$CG_STAGE[i])
@@ -516,7 +517,7 @@ matinput <- function() {
               shiny::updateTextInput(session, paste0("pl_observer_", i), value = rv$lab_pleopod$OBSERVER[i])
             }
           }
-          if (identical(rv$form_type, "ovary") && nrow(rv$lab_ovary) > 0) {
+          if (identical(form_type, "ovary") && nrow(rv$lab_ovary) > 0) {
             for (i in seq_len(min(length(rv$lab_lobster_ids), nrow(rv$lab_ovary)))) {
               shiny::updateTextInput(session, paste0("ov_lobster_id_", i), value = rv$lab_lobster_ids[i])
               shiny::updateNumericInput(session, paste0("ov_length_", i), value = rv$lab_ovary$LENGTH[i])
@@ -574,12 +575,12 @@ matinput <- function() {
         shiny::observeEvent(input$choose_pleopod, {
           rv$form_type <- "pleopod"
           fill_lab_forms()
-          session$onFlushed(function() fill_lab_row_values(), once = TRUE)
+          session$onFlushed(function() fill_lab_row_values("pleopod"), once = TRUE)
         })
         shiny::observeEvent(input$choose_ovary, {
           rv$form_type <- "ovary"
           fill_lab_forms()
-          session$onFlushed(function() fill_lab_row_values(), once = TRUE)
+          session$onFlushed(function() fill_lab_row_values("ovary"), once = TRUE)
         })
         output$pleopod_rows <- shiny::renderUI({
           ids <- rv$lab_lobster_ids
@@ -846,7 +847,8 @@ matinput <- function() {
             shiny::updateTextInput(session, "trip_sampler", value = rv$trip$sampler[1])
             rv$lab_context_loaded <- TRUE
             fill_lab_forms()
-            session$onFlushed(function() fill_lab_row_values(), once = TRUE)
+            current_form <- isolate(rv$form_type)
+            session$onFlushed(function() fill_lab_row_values(current_form), once = TRUE)
             first_string <- if (nrow(rv$strings) > 0) min(rv$strings$string_no, na.rm = TRUE) else 1
             shiny::updateNumericInput(session, "string_no", value = first_string)
             fill_atsea_for_string(first_string)
