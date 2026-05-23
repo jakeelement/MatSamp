@@ -451,6 +451,7 @@ matinput <- function() {
           trip_df <- isolate(rv$trip)
           strings_df <- isolate(rv$strings)
           samples_df <- isolate(rv$samples)
+          row_count <- isolate(rv$sample_row_count)
           if (is.null(trip_df) || nrow(trip_df) == 0 || is.na(string_no)) return()
           srow <- strings_df[strings_df$string_no == as.integer(string_no), , drop = FALSE]
           if (nrow(srow) > 0) {
@@ -462,18 +463,19 @@ matinput <- function() {
           sample_rows <- samples_df[samples_df$string_no == as.integer(string_no), , drop = FALSE]
           sample_rows <- sample_rows[order(sample_rows$lobster_id), , drop = FALSE]
           target_n <- max(1, nrow(sample_rows))
-          if (rv$sample_row_count < target_n) {
-            for (i in seq((rv$sample_row_count + 1), target_n)) {
+          if (row_count < target_n) {
+            for (i in seq((row_count + 1), target_n)) {
               shiny::insertUI(selector = "#sample_rows_container", where = "beforeEnd", ui = sample_row_ui(i))
             }
             rv$sample_row_count <- target_n
-          } else if (rv$sample_row_count > target_n) {
-            for (i in seq((target_n + 1), rv$sample_row_count)) {
+          } else if (row_count > target_n) {
+            for (i in seq((target_n + 1), row_count)) {
               shiny::removeUI(selector = paste0("#sample_row_", i), immediate = TRUE)
             }
             rv$sample_row_count <- target_n
           }
-          for (i in seq_len(rv$sample_row_count)) {
+          final_row_count <- isolate(rv$sample_row_count)
+          for (i in seq_len(final_row_count)) {
             if (i <= nrow(sample_rows)) {
               lid <- as.character(sample_rows$lobster_id[i])
               lobster_no <- suppressWarnings(as.integer(substr(lid, nchar(trip_df$trip_id[1]) + 3, nchar(trip_df$trip_id[1]) + 4)))
