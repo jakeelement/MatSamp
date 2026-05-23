@@ -283,12 +283,12 @@ matinput <- function() {
       shiny::column(width = 3, shiny::dateInput("trip_date", "DATE")),
       shiny::column(width = 3, shiny::textInput("trip_port", "PORT"))
     ),
-    shiny::fluidRow(
-      shiny::column(width = 3, shiny::selectInput("trip_lfa", "LFA",
-        choices = c("", "27", "28", "29", "30", "31A", "31B", "32", "33", "34", "35", "36", "37A", "37B", "38"),
-        selected = "")),
+      shiny::fluidRow(
+        shiny::column(width = 3, shiny::selectInput("trip_lfa", "LFA",
+          choices = c("", "27", "28", "29", "30", "31A", "31B", "32", "33", "34", "35", "36", "37A", "37B", "38"),
+          selected = "")),
       shiny::column(width = 6, shiny::textInput("trip_sampler", "SAMPLER")),
-      shiny::column(width = 3, shiny::actionButton("save_trip", "Create / Update Trip", class = "btn-primary"))
+      shiny::column(width = 3, shiny::actionButton("save_trip", "Create / Update Trip", class = "btn-primary validate-gated"))
     )
   )
 
@@ -314,7 +314,7 @@ matinput <- function() {
     ),
     shiny::fluidRow(
       shiny::column(width = 3, shiny::numericInput("depth", "DEPTH (FM)", value = NA, min = 0)),
-      shiny::column(width = 3, shiny::actionButton("next_string", "Next String / Update", class = "btn-primary"))
+      shiny::column(width = 3, shiny::actionButton("next_string", "Next String / Update", class = "btn-primary validate-gated"))
     )
   )
 
@@ -417,7 +417,7 @@ matinput <- function() {
         shinyFeedback::useShinyFeedback(),
         shiny::tags$script(shiny::HTML("
           Shiny.addCustomMessageHandler('toggleButtons', function(msg) {
-            $('button').prop('disabled', msg.disabled);
+            $('button.validate-gated').prop('disabled', msg.disabled);
           });
         ")),
         shiny::fluidRow(
@@ -493,16 +493,20 @@ matinput <- function() {
           }
         }
 
-        fill_lab_forms <- function() {
+        fill_lab_forms <- function(form_type = NULL) {
+          if (is.null(form_type)) form_type <- isolate(rv$form_type)
           if (is.null(rv$trip) || nrow(rv$trip) == 0) return()
           shiny::updateTextInput(session, "lab_trip_id", value = rv$trip$trip_id[1])
           rv$lab_lobster_ids <- unique(rv$samples$lobster_id)
-          if (nrow(rv$lab_pleopod) > 0) {
+          if (identical(form_type, "pleopod") && nrow(rv$lab_pleopod) > 0) {
             shiny::updateTextInput(session, "lab_count", value = as.character(rv$lab_pleopod$LAB_COUNT[1]))
             shiny::updateTextInput(session, "lab_date", value = as.character(rv$lab_pleopod$LAB_DATE[1]))
-          } else if (nrow(rv$lab_ovary) > 0) {
+          } else if (identical(form_type, "ovary") && nrow(rv$lab_ovary) > 0) {
             shiny::updateTextInput(session, "lab_count", value = as.character(rv$lab_ovary$LAB_COUNT[1]))
             shiny::updateTextInput(session, "lab_date", value = as.character(rv$lab_ovary$LAB_DATE[1]))
+          } else {
+            shiny::updateTextInput(session, "lab_count", value = "")
+            shiny::updateTextInput(session, "lab_date", value = "")
           }
         }
 
@@ -578,12 +582,12 @@ matinput <- function() {
         })
         shiny::observeEvent(input$choose_pleopod, {
           rv$form_type <- "pleopod"
-          fill_lab_forms()
+          fill_lab_forms("pleopod")
           session$onFlushed(function() fill_lab_row_values("pleopod"), once = TRUE)
         })
         shiny::observeEvent(input$choose_ovary, {
           rv$form_type <- "ovary"
-          fill_lab_forms()
+          fill_lab_forms("ovary")
           session$onFlushed(function() fill_lab_row_values("ovary"), once = TRUE)
         })
         output$pleopod_rows <- shiny::renderUI({
@@ -598,7 +602,11 @@ matinput <- function() {
         })
         shiny::observeEvent(list(rv$form_type, rv$lab_lobster_ids, rv$lab_pleopod, rv$lab_ovary), {
           if (nzchar(rv$db_folder_path)) shiny::updateTextInput(session, "db_folder", value = rv$db_folder_path)
-          fill_lab_row_values()
+          current_form <- isolate(rv$form_type)
+          if (identical(current_form, "pleopod") || identical(current_form, "ovary")) {
+            fill_lab_forms(current_form)
+            session$onFlushed(function() fill_lab_row_values(current_form), once = TRUE)
+          }
         }, ignoreInit = TRUE)
 
         shiny::observe({
@@ -850,9 +858,11 @@ matinput <- function() {
             shiny::updateSelectInput(session, "trip_lfa", selected = rv$trip$lfa[1])
             shiny::updateTextInput(session, "trip_sampler", value = rv$trip$sampler[1])
             rv$lab_context_loaded <- TRUE
-            fill_lab_forms()
             current_form <- isolate(rv$form_type)
-            session$onFlushed(function() fill_lab_row_values(current_form), once = TRUE)
+            fill_lab_forms(current_form)
+            if (identical(current_form, "pleopod") || identical(current_form, "ovary")) {
+              session$onFlushed(function() fill_lab_row_values(current_form), once = TRUE)
+            }
             first_string <- if (nrow(rv$strings) > 0) min(rv$strings$string_no, na.rm = TRUE) else 1
             shiny::updateNumericInput(session, "string_no", value = first_string)
             fill_atsea_for_string(first_string)
