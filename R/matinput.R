@@ -448,15 +448,18 @@ matinput <- function() {
         )
 
         fill_atsea_for_string <- function(string_no) {
-          if (is.null(rv$trip) || nrow(rv$trip) == 0 || is.na(string_no)) return()
-          srow <- rv$strings[rv$strings$string_no == as.integer(string_no), , drop = FALSE]
+          trip_df <- isolate(rv$trip)
+          strings_df <- isolate(rv$strings)
+          samples_df <- isolate(rv$samples)
+          if (is.null(trip_df) || nrow(trip_df) == 0 || is.na(string_no)) return()
+          srow <- strings_df[strings_df$string_no == as.integer(string_no), , drop = FALSE]
           if (nrow(srow) > 0) {
             shiny::updateTextInput(session, "lat", value = ifelse(is.na(srow$lat[1]), "", srow$lat[1]))
             shiny::updateTextInput(session, "long", value = ifelse(is.na(srow$long[1]), "", srow$long[1]))
             shiny::updateNumericInput(session, "grid", value = srow$grid[1])
             shiny::updateNumericInput(session, "depth", value = srow$depth[1])
           }
-          sample_rows <- rv$samples[rv$samples$string_no == as.integer(string_no), , drop = FALSE]
+          sample_rows <- samples_df[samples_df$string_no == as.integer(string_no), , drop = FALSE]
           sample_rows <- sample_rows[order(sample_rows$lobster_id), , drop = FALSE]
           target_n <- max(1, nrow(sample_rows))
           if (rv$sample_row_count < target_n) {
@@ -473,7 +476,7 @@ matinput <- function() {
           for (i in seq_len(rv$sample_row_count)) {
             if (i <= nrow(sample_rows)) {
               lid <- as.character(sample_rows$lobster_id[i])
-              lobster_no <- suppressWarnings(as.integer(substr(lid, nchar(rv$trip$trip_id[1]) + 3, nchar(rv$trip$trip_id[1]) + 4)))
+              lobster_no <- suppressWarnings(as.integer(substr(lid, nchar(trip_df$trip_id[1]) + 3, nchar(trip_df$trip_id[1]) + 4)))
               shiny::updateNumericInput(session, paste0("lobster_no_", i), value = lobster_no)
               shiny::updateNumericInput(session, paste0("length_", i), value = sample_rows$length[i])
               shiny::updateSelectInput(session, paste0("hardness_", i), selected = ifelse(is.na(sample_rows$hardness[i]), "", sample_rows$hardness[i]))
