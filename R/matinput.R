@@ -441,6 +441,7 @@ matinput <- function() {
           lab_ovary = data.frame(),
           lab_lobster_ids = character(),
           lab_context_loaded = FALSE,
+          db_folder_path = "",
           sample_row_count = 1,
           db_status = "",
           has_selected_db_folder = FALSE
@@ -505,6 +506,31 @@ matinput <- function() {
           }
         }
 
+        fill_lab_row_values <- function() {
+          if (identical(rv$form_type, "pleopod") && nrow(rv$lab_pleopod) > 0) {
+            for (i in seq_len(min(length(rv$lab_lobster_ids), nrow(rv$lab_pleopod)))) {
+              shiny::updateTextInput(session, paste0("pl_lobster_id_", i), value = rv$lab_lobster_ids[i])
+              shiny::updateTextInput(session, paste0("pl_cg_stage_", i), value = rv$lab_pleopod$CG_STAGE[i])
+              shiny::updateTextInput(session, paste0("pl_moult_stage_", i), value = rv$lab_pleopod$MOULT_STAGE[i])
+              shiny::updateTextInput(session, paste0("pl_image_", i), value = rv$lab_pleopod$IMAGE_FILE[i])
+              shiny::updateTextInput(session, paste0("pl_observer_", i), value = rv$lab_pleopod$OBSERVER[i])
+            }
+          }
+          if (identical(rv$form_type, "ovary") && nrow(rv$lab_ovary) > 0) {
+            for (i in seq_len(min(length(rv$lab_lobster_ids), nrow(rv$lab_ovary)))) {
+              shiny::updateTextInput(session, paste0("ov_lobster_id_", i), value = rv$lab_lobster_ids[i])
+              shiny::updateNumericInput(session, paste0("ov_length_", i), value = rv$lab_ovary$LENGTH[i])
+              shiny::updateNumericInput(session, paste0("ov_whole_w_", i), value = rv$lab_ovary$WHOLE_W[i])
+              shiny::updateTextInput(session, paste0("ov_gastrolith_", i), value = rv$lab_ovary$GASTROLITH[i])
+              shiny::updateTextInput(session, paste0("ov_colour_", i), value = rv$lab_ovary$OVARY_COLOUR[i])
+              shiny::updateTextInput(session, paste0("ov_yellow_", i), value = rv$lab_ovary$YELLOW_SPOTS[i])
+              shiny::updateNumericInput(session, paste0("ov_weight_", i), value = rv$lab_ovary$OVARY_WEIGHT[i])
+              shiny::updateTextInput(session, paste0("ov_image_", i), value = rv$lab_ovary$IMAGE_COMMENTS[i])
+              shiny::updateTextInput(session, paste0("ov_observer_", i), value = rv$lab_ovary$OBSERVER[i])
+            }
+          }
+        }
+
 
         output$form_ui <- shiny::renderUI({
           if (is.null(rv$form_type)) return(NULL)
@@ -563,6 +589,10 @@ matinput <- function() {
           if (length(ids) == 0) return(NULL)
           shiny::tagList(lapply(seq_along(ids), function(i) ovary_row_ui(i, ids[[i]])))
         })
+        shiny::observeEvent(list(rv$form_type, rv$lab_lobster_ids, rv$lab_pleopod, rv$lab_ovary), {
+          if (nzchar(rv$db_folder_path)) shiny::updateTextInput(session, "db_folder", value = rv$db_folder_path)
+          fill_lab_row_values()
+        }, ignoreInit = TRUE)
 
         shiny::observe({
           shiny::req(!is.null(input$trip_org), !is.null(input$trip_date))
@@ -660,6 +690,7 @@ matinput <- function() {
           if (!is.null(selected_dir) && nzchar(selected_dir)) {
             shiny::updateTextInput(session, "db_folder", value = selected_dir)
             rv$has_selected_db_folder <- TRUE
+            rv$db_folder_path <- selected_dir
             rv$db_status <- paste("Save directory selected:", selected_dir)
           }
         })
@@ -751,7 +782,7 @@ matinput <- function() {
                   LAB_COUNT = na_if_empty(input$lab_count),
                   LAB_DATE = na_if_empty(input$lab_date),
                   ROW_NO = i,
-                  LOBSTER_ID = input[[paste0("pl_lobster_id_", i)]],
+                  LOBSTER_ID = rv$lab_lobster_ids[i],
                   CG_STAGE = na_if_empty(input[[paste0("pl_cg_stage_", i)]]),
                   MOULT_STAGE = na_if_empty(input[[paste0("pl_moult_stage_", i)]]),
                   IMAGE_FILE = na_if_empty(input[[paste0("pl_image_", i)]]),
@@ -768,7 +799,7 @@ matinput <- function() {
                   LAB_COUNT = na_if_empty(input$lab_count),
                   LAB_DATE = na_if_empty(input$lab_date),
                   ROW_NO = i,
-                  LOBSTER_ID = input[[paste0("ov_lobster_id_", i)]],
+                  LOBSTER_ID = rv$lab_lobster_ids[i],
                   LENGTH = input[[paste0("ov_length_", i)]],
                   WHOLE_W = input[[paste0("ov_whole_w_", i)]],
                   GASTROLITH = na_if_empty(input[[paste0("ov_gastrolith_", i)]]),
@@ -813,33 +844,13 @@ matinput <- function() {
             shiny::updateTextInput(session, "trip_sampler", value = rv$trip$sampler[1])
             rv$lab_context_loaded <- TRUE
             fill_lab_forms()
-            if (nrow(rv$lab_pleopod) > 0) {
-              for (i in seq_len(min(length(rv$lab_lobster_ids), nrow(rv$lab_pleopod)))) {
-                shiny::updateTextInput(session, paste0("pl_lobster_id_", i), value = rv$lab_pleopod$LOBSTER_ID[i])
-                shiny::updateTextInput(session, paste0("pl_cg_stage_", i), value = rv$lab_pleopod$CG_STAGE[i])
-                shiny::updateTextInput(session, paste0("pl_moult_stage_", i), value = rv$lab_pleopod$MOULT_STAGE[i])
-                shiny::updateTextInput(session, paste0("pl_image_", i), value = rv$lab_pleopod$IMAGE_FILE[i])
-                shiny::updateTextInput(session, paste0("pl_observer_", i), value = rv$lab_pleopod$OBSERVER[i])
-              }
-            }
-            if (nrow(rv$lab_ovary) > 0) {
-              for (i in seq_len(min(length(rv$lab_lobster_ids), nrow(rv$lab_ovary)))) {
-                shiny::updateTextInput(session, paste0("ov_lobster_id_", i), value = rv$lab_ovary$LOBSTER_ID[i])
-                shiny::updateNumericInput(session, paste0("ov_length_", i), value = rv$lab_ovary$LENGTH[i])
-                shiny::updateNumericInput(session, paste0("ov_whole_w_", i), value = rv$lab_ovary$WHOLE_W[i])
-                shiny::updateTextInput(session, paste0("ov_gastrolith_", i), value = rv$lab_ovary$GASTROLITH[i])
-                shiny::updateTextInput(session, paste0("ov_colour_", i), value = rv$lab_ovary$OVARY_COLOUR[i])
-                shiny::updateTextInput(session, paste0("ov_yellow_", i), value = rv$lab_ovary$YELLOW_SPOTS[i])
-                shiny::updateNumericInput(session, paste0("ov_weight_", i), value = rv$lab_ovary$OVARY_WEIGHT[i])
-                shiny::updateTextInput(session, paste0("ov_image_", i), value = rv$lab_ovary$IMAGE_COMMENTS[i])
-                shiny::updateTextInput(session, paste0("ov_observer_", i), value = rv$lab_ovary$OBSERVER[i])
-              }
-            }
+            fill_lab_row_values()
             first_string <- if (nrow(rv$strings) > 0) min(rv$strings$string_no, na.rm = TRUE) else 1
             shiny::updateNumericInput(session, "string_no", value = first_string)
             fill_atsea_for_string(first_string)
             loaded_folder <- dirname(normalizePath(db_path, winslash = "/", mustWork = FALSE))
             shiny::updateTextInput(session, "db_folder", value = loaded_folder)
+            rv$db_folder_path <- loaded_folder
             rv$has_selected_db_folder <- TRUE
             rv$db_status <- paste("Loaded database:", normalizePath(db_path, winslash = "/", mustWork = FALSE))
           }, error = function(e) {
