@@ -508,26 +508,30 @@ matinput <- function() {
 
         fill_lab_row_values <- function(form_type = NULL) {
           if (is.null(form_type)) form_type <- isolate(rv$form_type)
-          if (identical(form_type, "pleopod") && nrow(rv$lab_pleopod) > 0) {
-            for (i in seq_len(min(length(rv$lab_lobster_ids), nrow(rv$lab_pleopod)))) {
-              shiny::updateTextInput(session, paste0("pl_lobster_id_", i), value = rv$lab_lobster_ids[i])
-              shiny::updateTextInput(session, paste0("pl_cg_stage_", i), value = rv$lab_pleopod$CG_STAGE[i])
-              shiny::updateTextInput(session, paste0("pl_moult_stage_", i), value = rv$lab_pleopod$MOULT_STAGE[i])
-              shiny::updateTextInput(session, paste0("pl_image_", i), value = rv$lab_pleopod$IMAGE_FILE[i])
-              shiny::updateTextInput(session, paste0("pl_observer_", i), value = rv$lab_pleopod$OBSERVER[i])
+          lab_ids <- isolate(rv$lab_lobster_ids)
+          lab_pleopod <- isolate(rv$lab_pleopod)
+          lab_ovary <- isolate(rv$lab_ovary)
+
+          if (identical(form_type, "pleopod") && nrow(lab_pleopod) > 0) {
+            for (i in seq_len(min(length(lab_ids), nrow(lab_pleopod)))) {
+              shiny::updateTextInput(session, paste0("pl_lobster_id_", i), value = lab_ids[i])
+              shiny::updateTextInput(session, paste0("pl_cg_stage_", i), value = lab_pleopod$CG_STAGE[i])
+              shiny::updateTextInput(session, paste0("pl_moult_stage_", i), value = lab_pleopod$MOULT_STAGE[i])
+              shiny::updateTextInput(session, paste0("pl_image_", i), value = lab_pleopod$IMAGE_FILE[i])
+              shiny::updateTextInput(session, paste0("pl_observer_", i), value = lab_pleopod$OBSERVER[i])
             }
           }
-          if (identical(form_type, "ovary") && nrow(rv$lab_ovary) > 0) {
-            for (i in seq_len(min(length(rv$lab_lobster_ids), nrow(rv$lab_ovary)))) {
-              shiny::updateTextInput(session, paste0("ov_lobster_id_", i), value = rv$lab_lobster_ids[i])
-              shiny::updateNumericInput(session, paste0("ov_length_", i), value = rv$lab_ovary$LENGTH[i])
-              shiny::updateNumericInput(session, paste0("ov_whole_w_", i), value = rv$lab_ovary$WHOLE_W[i])
-              shiny::updateTextInput(session, paste0("ov_gastrolith_", i), value = rv$lab_ovary$GASTROLITH[i])
-              shiny::updateTextInput(session, paste0("ov_colour_", i), value = rv$lab_ovary$OVARY_COLOUR[i])
-              shiny::updateTextInput(session, paste0("ov_yellow_", i), value = rv$lab_ovary$YELLOW_SPOTS[i])
-              shiny::updateNumericInput(session, paste0("ov_weight_", i), value = rv$lab_ovary$OVARY_WEIGHT[i])
-              shiny::updateTextInput(session, paste0("ov_image_", i), value = rv$lab_ovary$IMAGE_COMMENTS[i])
-              shiny::updateTextInput(session, paste0("ov_observer_", i), value = rv$lab_ovary$OBSERVER[i])
+          if (identical(form_type, "ovary") && nrow(lab_ovary) > 0) {
+            for (i in seq_len(min(length(lab_ids), nrow(lab_ovary)))) {
+              shiny::updateTextInput(session, paste0("ov_lobster_id_", i), value = lab_ids[i])
+              shiny::updateNumericInput(session, paste0("ov_length_", i), value = lab_ovary$LENGTH[i])
+              shiny::updateNumericInput(session, paste0("ov_whole_w_", i), value = lab_ovary$WHOLE_W[i])
+              shiny::updateTextInput(session, paste0("ov_gastrolith_", i), value = lab_ovary$GASTROLITH[i])
+              shiny::updateTextInput(session, paste0("ov_colour_", i), value = lab_ovary$OVARY_COLOUR[i])
+              shiny::updateTextInput(session, paste0("ov_yellow_", i), value = lab_ovary$YELLOW_SPOTS[i])
+              shiny::updateNumericInput(session, paste0("ov_weight_", i), value = lab_ovary$OVARY_WEIGHT[i])
+              shiny::updateTextInput(session, paste0("ov_image_", i), value = lab_ovary$IMAGE_COMMENTS[i])
+              shiny::updateTextInput(session, paste0("ov_observer_", i), value = lab_ovary$OBSERVER[i])
             }
           }
         }
