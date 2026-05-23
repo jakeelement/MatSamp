@@ -577,7 +577,7 @@ matinput <- function() {
             shiny::updateTextInput(session, "trip_sampler", value = rv$trip$sampler[1])
             first_string <- if (nrow(rv$strings) > 0) min(rv$strings$string_no, na.rm = TRUE) else 1
             shiny::updateNumericInput(session, "string_no", value = first_string)
-            fill_atsea_for_string(first_string)
+            session$onFlushed(function() fill_atsea_for_string(first_string), once = TRUE)
           }
         })
         shiny::observeEvent(input$choose_pleopod, {
@@ -865,7 +865,7 @@ matinput <- function() {
             }
             first_string <- if (nrow(rv$strings) > 0) min(rv$strings$string_no, na.rm = TRUE) else 1
             shiny::updateNumericInput(session, "string_no", value = first_string)
-            fill_atsea_for_string(first_string)
+            session$onFlushed(function() fill_atsea_for_string(first_string), once = TRUE)
             loaded_folder <- dirname(normalizePath(db_path, winslash = "/", mustWork = FALSE))
             shiny::updateTextInput(session, "db_folder", value = loaded_folder)
             rv$db_folder_path <- loaded_folder
