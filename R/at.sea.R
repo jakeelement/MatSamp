@@ -208,7 +208,8 @@ at.sea <- function() {
       sample_row_count = 1,
       db_folder_path   = "",
       has_selected_db_folder = FALSE,
-      db_status        = ""
+      db_status        = "",
+      sample_autofill_active = FALSE
     )
 
     # Pre-populate string + sample fields from loaded data
@@ -218,6 +219,8 @@ at.sea <- function() {
       samples_df <- shiny::isolate(rv$samples)
       row_count  <- shiny::isolate(rv$sample_row_count)
       if (is.null(trip_df) || nrow(trip_df) == 0 || is.na(string_no)) return()
+      rv$sample_autofill_active <- TRUE
+      on.exit({ rv$sample_autofill_active <- FALSE }, add = TRUE)
 
       srow <- strings_df[strings_df$string_no == as.integer(string_no), , drop = FALSE]
       if (nrow(srow) > 0) {
@@ -302,6 +305,14 @@ at.sea <- function() {
       reset_sample_rows(1)
     }
 
+
+    lobster_numbers <- function(n = rv$sample_row_count) {
+      vapply(seq_len(n), function(i) {
+        val <- input[[paste0("lobster_no_", i)]]
+        if (is.null(val) || is.na(val)) NA_integer_ else as.integer(val)
+      }, integer(1))
+    }
+
     # Auto-derive TRIPID from ORG + DATE
     shiny::observe({
       shiny::req(!is.null(input$trip_org), !is.null(input$trip_date))
@@ -327,7 +338,7 @@ at.sea <- function() {
     # Duplicate LOBSTER # feedback
     shiny::observe({
       n      <- rv$sample_row_count
-      values <- sapply(seq_len(n), function(i) input[[paste0("lobster_no_", i)]])
+      values <- lobster_numbers(n)
       non_na <- values[!is.na(values)]
       dupes  <- unique(non_na[duplicated(non_na)])
       for (i in seq_len(n)) {
@@ -343,15 +354,16 @@ at.sea <- function() {
       lat_err  <- !is.null(lat_val)  && nzchar(lat_val)  && !is_valid_ddmm(lat_val,  "lat")
       long_err <- !is.null(long_val) && nzchar(long_val) && !is_valid_ddmm(long_val, "long")
       n        <- rv$sample_row_count
-      values   <- sapply(seq_len(n), function(i) input[[paste0("lobster_no_", i)]])
+      values   <- lobster_numbers(n)
       lob_err  <- any(duplicated(values[!is.na(values)]))
       session$sendCustomMessage("toggleButtons", list(disabled = lat_err || long_err || lob_err))
     })
 
     # Keep exactly one trailing blank sample row
     shiny::observe({
+      if (isTRUE(rv$sample_autofill_active)) return()
       n <- rv$sample_row_count
-      values <- sapply(seq_len(n), function(i) input[[paste0("lobster_no_", i)]])
+      values <- lobster_numbers(n)
       filled <- which(!is.na(values))
       desired_rows <- max(1, if (length(filled) == 0) 1 else max(filled) + 1)
 
@@ -441,6 +453,7 @@ at.sea <- function() {
         rv$strings <- loaded$strings
         rv$samples <- loaded$samples
 
+        shiny::updateTextInput(  session, "trip_id",     value    = rv$trip$trip_id[1])
         shiny::updateTextInput(  session, "trip_org",    value    = rv$trip$org[1])
         shiny::updateDateInput(  session, "trip_date",   value    = rv$trip$date[1])
         shiny::updateTextInput(  session, "trip_port",   value    = rv$trip$port[1])
@@ -450,7 +463,6 @@ at.sea <- function() {
         first_string <- if (nrow(rv$strings) > 0) min(rv$strings$string_no, na.rm = TRUE) else 1
         rv$sample_row_count <- 1
         shiny::updateNumericInput(session, "string_no", value = first_string)
-        session$onFlushed(function() fill_for_string(first_string), once = TRUE)
 
         loaded_folder <- dirname(normalizePath(db_path, winslash = "/", mustWork = FALSE))
         shiny::updateTextInput(session, "db_folder", value = loaded_folder)
@@ -464,8 +476,14 @@ at.sea <- function() {
 
     # Choose save directory
     shiny::observeEvent(input$choose_db_folder, {
-      selected <- with_topmost_tk(function()
-        tcltk::tk_choose.dir(default = input$db_folder, caption = "Choose save directory"))
+      selected <- tryCatch(
+        with_topmost_tk(function()
+          tcltk::tk_choose.dir(default = input$db_folder, caption = "Choose save directory")),
+        error = function(e) {
+          rv$db_status <- paste("Choose directory failed:", conditionMessage(e))
+          NULL
+        }
+      )
       if (!is.null(selected) && nzchar(selected)) {
         shiny::updateTextInput(session, "db_folder", value = selected)
         rv$db_folder_path      <- selected
