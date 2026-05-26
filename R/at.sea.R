@@ -256,7 +256,7 @@ at.sea <- function() {
 
       populate_rows <- function(attempt = 1L, max_attempts = 10L) {
         last_id <- paste0("lobster_no_", nrow(sample_rows))
-        if (nrow(sample_rows) > 0 && is.null(input[[last_id]]) && attempt < max_attempts) {
+        if (nrow(sample_rows) > 0 && is.null(shiny::isolate(input[[last_id]])) && attempt < max_attempts) {
           session$onFlushed(function() populate_rows(attempt + 1L, max_attempts), once = TRUE)
           return()
         }
