@@ -254,22 +254,29 @@ at.sea <- function() {
       target_n <- max(1, nrow(sample_rows) + 1)
       reset_sample_rows(target_n)
 
-      session$onFlushed(function() {
-        session$onFlushed(function() {
-          for (i in seq_len(nrow(sample_rows))) {
-            lid    <- as.character(sample_rows$lobster_id[i])
-            lob_no <- suppressWarnings(as.integer(substr(lid, nchar(trip_df$trip_id[1]) + 3, nchar(trip_df$trip_id[1]) + 4)))
-            shiny::updateNumericInput(session, paste0("lobster_no_", i), value = lob_no)
-            shiny::updateNumericInput(session, paste0("length_",    i), value = sample_rows$length[i])
-            shiny::updateSelectInput( session, paste0("hardness_",  i), selected = ifelse(is.na(sample_rows$hardness[i]), "", sample_rows$hardness[i]))
-            shiny::updateSelectInput( session, paste0("egg_",       i), selected = ifelse(is.na(sample_rows$egg[i]),      "", sample_rows$egg[i]))
-            shiny::updateSelectInput( session, paste0("pleopod_",   i), selected = ifelse(is.na(sample_rows$pleopod[i]),  "", sample_rows$pleopod[i]))
-            shiny::updateSelectInput( session, paste0("ovary_",     i), selected = ifelse(is.na(sample_rows$ovary[i]),    "", sample_rows$ovary[i]))
-            shiny::updateTextInput(   session, paste0("comments_",  i), value    = ifelse(is.na(sample_rows$comments[i]), "", sample_rows$comments[i]))
-          }
-          rv$sample_autofill_active <- FALSE
-        }, once = TRUE)
-      }, once = TRUE)
+      populate_rows <- function(attempt = 1L, max_attempts = 10L) {
+        last_id <- paste0("lobster_no_", nrow(sample_rows))
+        if (nrow(sample_rows) > 0 && is.null(input[[last_id]]) && attempt < max_attempts) {
+          session$onFlushed(function() populate_rows(attempt + 1L, max_attempts), once = TRUE)
+          return()
+        }
+
+        for (i in seq_len(nrow(sample_rows))) {
+          lid <- as.character(sample_rows$lobster_id[i])
+          id_suffix <- substr(lid, nchar(trip_df$trip_id[1]) + 1, nchar(lid))
+          lob_no <- suppressWarnings(as.integer(substr(id_suffix, nchar(id_suffix) - 1, nchar(id_suffix))))
+          shiny::updateNumericInput(session, paste0("lobster_no_", i), value = lob_no)
+          shiny::updateNumericInput(session, paste0("length_",    i), value = sample_rows$length[i])
+          shiny::updateSelectInput( session, paste0("hardness_",  i), selected = ifelse(is.na(sample_rows$hardness[i]), "", sample_rows$hardness[i]))
+          shiny::updateSelectInput( session, paste0("egg_",       i), selected = ifelse(is.na(sample_rows$egg[i]),      "", sample_rows$egg[i]))
+          shiny::updateSelectInput( session, paste0("pleopod_",   i), selected = ifelse(is.na(sample_rows$pleopod[i]),  "", sample_rows$pleopod[i]))
+          shiny::updateSelectInput( session, paste0("ovary_",     i), selected = ifelse(is.na(sample_rows$ovary[i]),    "", sample_rows$ovary[i]))
+          shiny::updateTextInput(   session, paste0("comments_",  i), value    = ifelse(is.na(sample_rows$comments[i]), "", sample_rows$comments[i]))
+        }
+        rv$sample_autofill_active <- FALSE
+      }
+
+      session$onFlushed(function() populate_rows(), once = TRUE)
     }
 
 
