@@ -96,6 +96,18 @@ at.sea <- function() {
     }
 
     if (nrow(sample_df) > 0) {
+      if (nrow(string_df) > 0) {
+        sample_df <- merge(
+          sample_df,
+          unique(string_df[c("trip_id", "string_no")]),
+          by = c("trip_id", "string_no")
+        )
+      } else {
+        sample_df <- sample_df[0, , drop = FALSE]
+      }
+    }
+
+    if (nrow(sample_df) > 0) {
       DBI::dbWriteTable(con, "SAMPLE",
         data.frame(TRIPID = sample_df$trip_id, STRING_NO = sample_df$string_no,
                    LOBSTER_ID = sample_df$lobster_id, LENGTH = sample_df$length,
@@ -217,10 +229,9 @@ at.sea <- function() {
       trip_df    <- shiny::isolate(rv$trip)
       strings_df <- shiny::isolate(rv$strings)
       samples_df <- shiny::isolate(rv$samples)
-      row_count  <- shiny::isolate(rv$sample_row_count)
       if (is.null(trip_df) || nrow(trip_df) == 0 || is.na(string_no)) return()
+
       rv$sample_autofill_active <- TRUE
-      on.exit({ rv$sample_autofill_active <- FALSE }, add = TRUE)
 
       srow <- strings_df[strings_df$string_no == as.integer(string_no), , drop = FALSE]
       if (nrow(srow) > 0) {
@@ -235,39 +246,26 @@ at.sea <- function() {
       } else data.frame()
       if (nrow(sample_rows) > 0)
         sample_rows <- sample_rows[order(sample_rows$lobster_id), , drop = FALSE]
-      target_n    <- max(1, nrow(sample_rows) + 1)
 
-      if (row_count < target_n) {
-        for (i in seq(row_count + 1, target_n))
-          shiny::insertUI(selector = "#sample_rows_container", where = "beforeEnd", ui = sample_row_ui(i))
-      } else if (row_count > target_n) {
-        for (i in seq(target_n + 1, row_count))
-          shiny::removeUI(selector = paste0("#sample_row_", i), immediate = TRUE)
-      }
-      rv$sample_row_count <- target_n
+      target_n <- max(1, nrow(sample_rows) + 1)
+      reset_sample_rows(target_n)
 
-      for (i in seq_len(target_n)) {
-        if (i <= nrow(sample_rows)) {
-          lid       <- as.character(sample_rows$lobster_id[i])
-          lob_no    <- suppressWarnings(as.integer(substr(lid, nchar(trip_df$trip_id[1]) + 3, nchar(trip_df$trip_id[1]) + 4)))
+      session$onFlushed(function() {
+        for (i in seq_len(nrow(sample_rows))) {
+          lid    <- as.character(sample_rows$lobster_id[i])
+          lob_no <- suppressWarnings(as.integer(substr(lid, nchar(trip_df$trip_id[1]) + 3, nchar(trip_df$trip_id[1]) + 4)))
           shiny::updateNumericInput(session, paste0("lobster_no_", i), value = lob_no)
           shiny::updateNumericInput(session, paste0("length_",    i), value = sample_rows$length[i])
-          shiny::updateSelectInput( session, paste0("hardness_",  i), selected = ifelse(is.na(sample_rows$hardness[i]),  "", sample_rows$hardness[i]))
-          shiny::updateSelectInput( session, paste0("egg_",       i), selected = ifelse(is.na(sample_rows$egg[i]),       "", sample_rows$egg[i]))
-          shiny::updateSelectInput( session, paste0("pleopod_",   i), selected = ifelse(is.na(sample_rows$pleopod[i]),   "", sample_rows$pleopod[i]))
-          shiny::updateSelectInput( session, paste0("ovary_",     i), selected = ifelse(is.na(sample_rows$ovary[i]),     "", sample_rows$ovary[i]))
-          shiny::updateTextInput(   session, paste0("comments_",  i), value    = ifelse(is.na(sample_rows$comments[i]),  "", sample_rows$comments[i]))
-        } else {
-          shiny::updateNumericInput(session, paste0("lobster_no_", i), value = NA)
-          shiny::updateNumericInput(session, paste0("length_",    i), value = NA)
-          shiny::updateSelectInput( session, paste0("hardness_",  i), selected = "")
-          shiny::updateSelectInput( session, paste0("egg_",       i), selected = "")
-          shiny::updateSelectInput( session, paste0("pleopod_",   i), selected = "")
-          shiny::updateSelectInput( session, paste0("ovary_",     i), selected = "")
-          shiny::updateTextInput(   session, paste0("comments_",  i), value = "")
+          shiny::updateSelectInput( session, paste0("hardness_",  i), selected = ifelse(is.na(sample_rows$hardness[i]), "", sample_rows$hardness[i]))
+          shiny::updateSelectInput( session, paste0("egg_",       i), selected = ifelse(is.na(sample_rows$egg[i]),      "", sample_rows$egg[i]))
+          shiny::updateSelectInput( session, paste0("pleopod_",   i), selected = ifelse(is.na(sample_rows$pleopod[i]),  "", sample_rows$pleopod[i]))
+          shiny::updateSelectInput( session, paste0("ovary_",     i), selected = ifelse(is.na(sample_rows$ovary[i]),    "", sample_rows$ovary[i]))
+          shiny::updateTextInput(   session, paste0("comments_",  i), value    = ifelse(is.na(sample_rows$comments[i]), "", sample_rows$comments[i]))
         }
-      }
+        rv$sample_autofill_active <- FALSE
+      }, once = TRUE)
     }
+
 
     clear_sample_row <- function(i) {
       shiny::updateNumericInput(session, paste0("lobster_no_", i), value = NA)
