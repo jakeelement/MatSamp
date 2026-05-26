@@ -232,7 +232,7 @@ at.sea <- function() {
       } else data.frame()
       if (nrow(sample_rows) > 0)
         sample_rows <- sample_rows[order(sample_rows$lobster_id), , drop = FALSE]
-      target_n    <- max(1, nrow(sample_rows))
+      target_n    <- max(1, nrow(sample_rows) + 1)
 
       if (row_count < target_n) {
         for (i in seq(row_count + 1, target_n))
@@ -264,6 +264,42 @@ at.sea <- function() {
           shiny::updateTextInput(   session, paste0("comments_",  i), value = "")
         }
       }
+    }
+
+    clear_sample_row <- function(i) {
+      shiny::updateNumericInput(session, paste0("lobster_no_", i), value = NA)
+      shiny::updateNumericInput(session, paste0("length_",    i), value = NA)
+      shiny::updateSelectInput( session, paste0("hardness_",  i), selected = "")
+      shiny::updateSelectInput( session, paste0("egg_",       i), selected = "")
+      shiny::updateSelectInput( session, paste0("pleopod_",   i), selected = "")
+      shiny::updateSelectInput( session, paste0("ovary_",     i), selected = "")
+      shiny::updateTextInput(   session, paste0("comments_",  i), value = "")
+    }
+
+    reset_sample_rows <- function(target_rows = 1) {
+      current_rows <- shiny::isolate(rv$sample_row_count)
+      target_rows  <- max(1, as.integer(target_rows))
+
+      if (current_rows < target_rows) {
+        for (i in seq(current_rows + 1, target_rows)) {
+          shiny::insertUI(selector = "#sample_rows_container", where = "beforeEnd", ui = sample_row_ui(i))
+        }
+      } else if (current_rows > target_rows) {
+        for (i in seq(target_rows + 1, current_rows)) {
+          shiny::removeUI(selector = paste0("#sample_row_", i), immediate = TRUE)
+        }
+      }
+      rv$sample_row_count <- target_rows
+
+      for (i in seq_len(target_rows)) clear_sample_row(i)
+    }
+
+    clear_location_and_samples <- function() {
+      shiny::updateTextInput(  session, "lat",   value = "")
+      shiny::updateTextInput(  session, "long",  value = "")
+      shiny::updateNumericInput(session, "grid", value = NA)
+      shiny::updateNumericInput(session, "depth", value = NA)
+      reset_sample_rows(1)
     }
 
     # Auto-derive TRIPID from ORG + DATE
@@ -312,14 +348,23 @@ at.sea <- function() {
       session$sendCustomMessage("toggleButtons", list(disabled = lat_err || long_err || lob_err))
     })
 
-    # Auto-expand sample rows when last row gets a value
+    # Keep exactly one trailing blank sample row
     shiny::observe({
-      i   <- rv$sample_row_count
-      val <- input[[paste0("lobster_no_", i)]]
-      if (!is.null(val) && !is.na(val)) {
-        next_i <- i + 1
-        shiny::insertUI(selector = "#sample_rows_container", where = "beforeEnd", ui = sample_row_ui(next_i))
-        rv$sample_row_count <- next_i
+      n <- rv$sample_row_count
+      values <- sapply(seq_len(n), function(i) input[[paste0("lobster_no_", i)]])
+      filled <- which(!is.na(values))
+      desired_rows <- max(1, if (length(filled) == 0) 1 else max(filled) + 1)
+
+      if (desired_rows > n) {
+        for (i in seq(n + 1, desired_rows)) {
+          shiny::insertUI(selector = "#sample_rows_container", where = "beforeEnd", ui = sample_row_ui(i))
+        }
+        rv$sample_row_count <- desired_rows
+      } else if (desired_rows < n) {
+        for (i in seq(desired_rows + 1, n)) {
+          shiny::removeUI(selector = paste0("#sample_row_", i), immediate = TRUE)
+        }
+        rv$sample_row_count <- desired_rows
       }
     })
 
@@ -371,30 +416,14 @@ at.sea <- function() {
       if (length(sample_rows) > 0)
         rv$samples <- unique(rbind(rv$samples, do.call(rbind, sample_rows)))
 
-      shiny::updateTextInput(  session, "lat",       value = "")
-      shiny::updateTextInput(  session, "long",      value = "")
-      shiny::updateNumericInput(session, "grid",     value = NA)
-      shiny::updateNumericInput(session, "depth",    value = NA)
       shiny::updateNumericInput(session, "string_no", value = input$string_no + 1)
-
-      if (rv$sample_row_count > 1)
-        for (i in 2:rv$sample_row_count)
-          shiny::removeUI(selector = paste0("#sample_row_", i), immediate = TRUE)
-      rv$sample_row_count <- 1
-
-      shiny::updateNumericInput(session, "lobster_no_1", value = NA)
-      shiny::updateNumericInput(session, "length_1",     value = NA)
-      shiny::updateSelectInput( session, "hardness_1",   selected = "")
-      shiny::updateSelectInput( session, "egg_1",        selected = "")
-      shiny::updateSelectInput( session, "pleopod_1",    selected = "")
-      shiny::updateSelectInput( session, "ovary_1",      selected = "")
-      shiny::updateTextInput(   session, "comments_1",   value = "")
+      clear_location_and_samples()
     })
 
-    # Populate fields when string_no changes (and data exists)
+    # Populate fields when string_no changes (clear first, then load if available)
     shiny::observeEvent(input$string_no, {
       shiny::req(!is.null(rv$trip), nrow(rv$trip) > 0, !is.na(input$string_no))
-      rv$sample_row_count <- 1
+      clear_location_and_samples()
       fill_for_string(input$string_no)
     }, ignoreInit = TRUE)
 
