@@ -77,7 +77,9 @@ at.sea <- function() {
     db_ensure_tables(con)
 
     trip_id <- trip_df$trip_id[1]
-    DBI::dbExecute(con, "DELETE FROM SAMPLE     WHERE TRIPID = ?", params = list(trip_id))
+    DBI::dbExecute(con, "DELETE FROM LAB_PLEOPOD WHERE TRIPID = ?", params = list(trip_id))
+    DBI::dbExecute(con, "DELETE FROM LAB_OVARY   WHERE TRIPID = ?", params = list(trip_id))
+    DBI::dbExecute(con, "DELETE FROM SAMPLE      WHERE TRIPID = ?", params = list(trip_id))
     DBI::dbExecute(con, "DELETE FROM STRING_INFO WHERE TRIPID = ?", params = list(trip_id))
     DBI::dbExecute(con, "DELETE FROM TRIP        WHERE TRIPID = ?", params = list(trip_id))
 
@@ -225,7 +227,8 @@ at.sea <- function() {
       db_folder_path   = "",
       has_selected_db_folder = FALSE,
       db_status        = "",
-      sample_autofill_active = FALSE
+      sample_autofill_active = FALSE,
+      sample_min_rows = 1
     )
 
     # Pre-populate string + sample fields from loaded data
@@ -252,6 +255,7 @@ at.sea <- function() {
         sample_rows <- sample_rows[order(sample_rows$lobster_id), , drop = FALSE]
 
       target_n <- max(1, nrow(sample_rows) + 1)
+      rv$sample_min_rows <- target_n
       reset_sample_rows(target_n)
 
       populate_rows <- function(attempt = 1L, max_attempts = 10L) {
@@ -313,6 +317,7 @@ at.sea <- function() {
       shiny::updateTextInput(  session, "long",  value = "")
       shiny::updateNumericInput(session, "grid", value = NA)
       shiny::updateNumericInput(session, "depth", value = NA)
+      rv$sample_min_rows <- 1
       reset_sample_rows(1)
     }
 
@@ -376,7 +381,7 @@ at.sea <- function() {
       n <- rv$sample_row_count
       values <- lobster_numbers(n)
       filled <- which(!is.na(values))
-      desired_rows <- max(1, if (length(filled) == 0) 1 else max(filled) + 1)
+      desired_rows <- max(rv$sample_min_rows, if (length(filled) == 0) 1 else max(filled) + 1)
 
       if (desired_rows > n) {
         for (i in seq(n + 1, desired_rows)) {
@@ -417,7 +422,10 @@ at.sea <- function() {
         depth     = input$depth,
         stringsAsFactors = FALSE
       )
-      rv$strings <- unique(rbind(rv$strings, new_string))
+      if (nrow(rv$strings) > 0) {
+        rv$strings <- rv$strings[!(rv$strings$trip_id == input$trip_id & rv$strings$string_no == as.integer(input$string_no)), , drop = FALSE]
+      }
+      rv$strings <- rbind(rv$strings, new_string)
 
       sample_rows <- lapply(seq_len(rv$sample_row_count), function(i) {
         lob_no <- input[[paste0("lobster_no_", i)]]
@@ -436,8 +444,11 @@ at.sea <- function() {
         )
       })
       sample_rows <- Filter(Negate(is.null), sample_rows)
+      if (nrow(rv$samples) > 0) {
+        rv$samples <- rv$samples[!(rv$samples$trip_id == input$trip_id & rv$samples$string_no == as.integer(input$string_no)), , drop = FALSE]
+      }
       if (length(sample_rows) > 0)
-        rv$samples <- unique(rbind(rv$samples, do.call(rbind, sample_rows)))
+        rv$samples <- rbind(rv$samples, do.call(rbind, sample_rows))
 
       shiny::updateNumericInput(session, "string_no", value = input$string_no + 1)
       clear_location_and_samples()
