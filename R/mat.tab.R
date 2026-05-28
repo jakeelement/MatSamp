@@ -14,6 +14,21 @@
 #' @import RSQLite
 #' @export
 mat.tab <- function(db_path = NULL, table = NULL, view = interactive()) {
+  view_table <- function(x, title) {
+    if (!is.data.frame(x) || ncol(x) == 0) {
+      warning("Skipping viewer for table with no displayable columns: ", title, call. = FALSE)
+      return(invisible(FALSE))
+    }
+
+    tryCatch({
+      utils::View(x, title = title)
+      invisible(TRUE)
+    }, error = function(e) {
+      warning("Could not open viewer for table '", title, "': ", conditionMessage(e), call. = FALSE)
+      invisible(FALSE)
+    })
+  }
+
   if (is.null(db_path)) {
     db_path <- file.choose()
   }
@@ -38,7 +53,7 @@ mat.tab <- function(db_path = NULL, table = NULL, view = interactive()) {
 
     out <- DBI::dbReadTable(con, table)
     if (isTRUE(view) && interactive()) {
-      utils::View(out, title = table)
+      view_table(out, table)
     }
     return(out)
   }
@@ -51,9 +66,7 @@ mat.tab <- function(db_path = NULL, table = NULL, view = interactive()) {
 
   if (isTRUE(view) && interactive()) {
     for (tbl in names(out)) {
-      if (is.data.frame(out[[tbl]])) {
-        utils::View(out[[tbl]], title = tbl)
-      }
+      view_table(out[[tbl]], tbl)
     }
   }
 
