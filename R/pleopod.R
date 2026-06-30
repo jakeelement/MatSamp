@@ -128,9 +128,9 @@ pleopod <- function() {
     rv <- shiny::reactiveValues(
       trips = data.frame(), lab_pleopod = data.frame(), locations = list(), row_count = 1,
       current_location_row = NA_integer_, autofill_active = FALSE,
-      db_folder_path = "", has_selected_db_folder = FALSE, db_status = "",
-      location_observers = integer()
+      db_folder_path = "", has_selected_db_folder = FALSE, db_status = ""
     )
+    location_observers <- integer()
 
     lobster_numbers <- function(n = rv$row_count) {
       vapply(seq_len(n), function(i) {
@@ -145,7 +145,7 @@ pleopod <- function() {
     }
 
     register_location_observer <- function(i) {
-      if (i %in% rv$location_observers) return()
+      if (i %in% location_observers) return()
       local({
         ii <- i
         shiny::observeEvent(input[[paste0("pl_location_", ii)]], {
@@ -155,7 +155,7 @@ pleopod <- function() {
           shiny::showModal(location_modal_ui(ii, loc))
         }, ignoreInit = TRUE)
       })
-      rv$location_observers <- c(rv$location_observers, i)
+      location_observers <<- c(location_observers, i)
     }
 
     reset_rows <- function(target_rows = 1) {
