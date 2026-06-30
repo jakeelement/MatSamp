@@ -12,5 +12,6 @@ A Shiny app launched in the current R session.
 \description{
 Starts a standalone Shiny app for entering lab pleopod data. Each lobster row
 is entered directly and can be assigned its own trip and location information
-through the row's Add Location / Change Location button.
+through the row's Add Location / Change Location button. Lab sampling
+databases are named from LAB DATE as `MAT_LAB_ddmmyy.db`.
 }

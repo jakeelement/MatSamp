@@ -2,7 +2,8 @@
 #'
 #' Starts a standalone Shiny app for entering lab pleopod data. Each lobster row
 #' is entered directly and can be assigned its own trip and location information
-#' through the row's Add Location / Change Location button.
+#' through the row's Add Location / Change Location button. Lab sampling
+#' databases are named from LAB DATE as `MAT_LAB_ddmmyy.db`.
 #'
 #' @return A Shiny app launched in the current R session.
 #' @import shiny
@@ -37,6 +38,13 @@ pleopod <- function() {
       ),
       shiny::tags$hr()
     )
+  }
+
+  lab_date_from_db_path <- function(db_path) {
+    base <- basename(db_path)
+    matched <- regexec("^MAT_LAB_([0-9]{6})\\.db$", base, ignore.case = TRUE)
+    parts <- regmatches(base, matched)[[1]]
+    if (length(parts) == 2) parts[[2]] else NA_character_
   }
 
   location_modal_ui <- function(row_no, location) {
@@ -108,7 +116,7 @@ pleopod <- function() {
   ui <- shiny::fluidPage(
     mat_js_tags(),
     shiny::titlePanel("CLRN SOM50 LAB PLEOPOD SAMPLE DATA FORM"),
-    shiny::h4("Load Existing Pleopod Database"),
+    shiny::h4("Load Existing Lab Database"),
     shiny::actionButton("load_db_file", "Choose .db File", class = "btn-secondary"),
     shiny::tags$hr(),
     shiny::h3("LAB INFORMATION"),
@@ -156,6 +164,14 @@ pleopod <- function() {
         }, ignoreInit = TRUE)
       })
       location_observers <<- c(location_observers, i)
+    }
+
+    clear_pleopod_row <- function(i) {
+      shiny::updateNumericInput(session, paste0("pl_lobster_no_", i), value = NA)
+      shiny::updateTextInput(session, paste0("pl_cg_stage_", i), value = "")
+      shiny::updateTextInput(session, paste0("pl_moult_stage_", i), value = "")
+      shiny::updateTextInput(session, paste0("pl_image_", i), value = "")
+      shiny::updateTextInput(session, paste0("pl_observer_", i), value = "")
     }
 
     reset_rows <- function(target_rows = 1) {
@@ -217,27 +233,36 @@ pleopod <- function() {
       if (!nzchar(db_path)) return()
       tryCatch({
         loaded <- read_pleopod_db(db_path)
+        lab_date <- lab_date_from_db_path(db_path)
+        if (is.na(lab_date)) {
+          lab_dates <- unique(stats::na.omit(loaded$pleopod$LAB_DATE))
+          if (length(lab_dates) == 1) lab_date <- lab_dates[[1]]
+        }
+        if (is.na(lab_date) || !nzchar(lab_date)) stop("Could not determine LAB DATE from MAT_LAB_ddmmyy.db filename or LAB_PLEOPOD table")
+
+        pleopod_df <- loaded$pleopod[loaded$pleopod$LAB_DATE == lab_date, , drop = FALSE]
         rv$trips <- loaded$trips
-        rv$lab_pleopod <- loaded$pleopod
+        rv$lab_pleopod <- pleopod_df
         rv$locations <- list()
-        if (nrow(loaded$pleopod) > 0 && nrow(loaded$trips) > 0) {
-          for (i in seq_len(nrow(loaded$pleopod))) {
-            loc <- loaded$trips[loaded$trips$TRIPID == loaded$pleopod$TRIPID[i], , drop = FALSE]
+        if (nrow(pleopod_df) > 0 && nrow(loaded$trips) > 0) {
+          for (i in seq_len(nrow(pleopod_df))) {
+            loc <- loaded$trips[loaded$trips$TRIPID == pleopod_df$TRIPID[i], , drop = FALSE]
             if (nrow(loc) > 0) rv$locations[[as.character(i)]] <- loc[1, , drop = FALSE]
           }
         }
-        target_rows <- max(1, nrow(loaded$pleopod) + 1)
+        target_rows <- max(1, nrow(pleopod_df) + 1)
         rv$autofill_active <- TRUE
         reset_rows(target_rows)
         session$onFlushed(function() {
-          for (i in seq_len(nrow(loaded$pleopod))) {
-            shiny::updateNumericInput(session, paste0("pl_lobster_no_", i), value = loaded$pleopod$LOBSTER_NO[i])
-            shiny::updateTextInput(session, paste0("pl_cg_stage_", i), value = chr_or_empty(loaded$pleopod$CG_STAGE[i]))
-            shiny::updateTextInput(session, paste0("pl_moult_stage_", i), value = chr_or_empty(loaded$pleopod$MOULT_STAGE[i]))
-            shiny::updateTextInput(session, paste0("pl_image_", i), value = chr_or_empty(loaded$pleopod$IMAGE_FILE[i]))
-            shiny::updateTextInput(session, paste0("pl_observer_", i), value = chr_or_empty(loaded$pleopod$OBSERVER[i]))
+          for (i in seq_len(target_rows)) clear_pleopod_row(i)
+          for (i in seq_len(nrow(pleopod_df))) {
+            shiny::updateNumericInput(session, paste0("pl_lobster_no_", i), value = pleopod_df$LOBSTER_NO[i])
+            shiny::updateTextInput(session, paste0("pl_cg_stage_", i), value = chr_or_empty(pleopod_df$CG_STAGE[i]))
+            shiny::updateTextInput(session, paste0("pl_moult_stage_", i), value = chr_or_empty(pleopod_df$MOULT_STAGE[i]))
+            shiny::updateTextInput(session, paste0("pl_image_", i), value = chr_or_empty(pleopod_df$IMAGE_FILE[i]))
+            shiny::updateTextInput(session, paste0("pl_observer_", i), value = chr_or_empty(pleopod_df$OBSERVER[i]))
           }
-          if (nrow(loaded$pleopod) > 0) shiny::updateTextInput(session, "lab_date", value = chr_or_empty(loaded$pleopod$LAB_DATE[1]))
+          shiny::updateTextInput(session, "lab_date", value = lab_date)
           rv$autofill_active <- FALSE
         }, once = TRUE)
         loaded_folder <- dirname(normalizePath(db_path, winslash = "/", mustWork = FALSE))
@@ -261,11 +286,13 @@ pleopod <- function() {
     shiny::observeEvent(input$save_db, {
       shiny::req(nzchar(input$db_folder))
       if (!dir.exists(input$db_folder)) { rv$db_status <- paste("Folder not found:", input$db_folder); return() }
+      lab_date <- trimws(chr_or_empty(input$lab_date))
+      if (!grepl("^[0-9]{6}$", lab_date)) { rv$db_status <- "Save failed: LAB DATE must be DDMMYY"; return() }
       pleopod_rows <- Filter(Negate(is.null), lapply(seq_len(rv$row_count), function(i) {
         lob_no <- input[[paste0("pl_lobster_no_", i)]]
         if (is.null(lob_no) || is.na(lob_no)) return(NULL)
         loc <- rv$locations[[as.character(i)]]
-        data.frame(TRIPID = if (is.null(loc)) NA_character_ else loc$TRIPID[1], LAB_DATE = na_if_empty(input$lab_date),
+        data.frame(TRIPID = if (is.null(loc)) NA_character_ else loc$TRIPID[1], LAB_DATE = lab_date,
           ROW_NO = i, LOBSTER_NO = as.integer(lob_no), CG_STAGE = na_if_empty(input[[paste0("pl_cg_stage_", i)]]),
           MOULT_STAGE = na_if_empty(input[[paste0("pl_moult_stage_", i)]]), IMAGE_FILE = na_if_empty(input[[paste0("pl_image_", i)]]),
           OBSERVER = na_if_empty(input[[paste0("pl_observer_", i)]]), stringsAsFactors = FALSE)
@@ -274,7 +301,7 @@ pleopod <- function() {
       trip_rows <- Filter(Negate(is.null), rv$locations)
       trip_df <- if (length(trip_rows) > 0) unique(do.call(rbind, trip_rows)) else data.frame()
       if (nrow(trip_df) > 0) trip_df <- trip_df[!duplicated(trip_df$TRIPID), , drop = FALSE]
-      db_base <- if (nrow(trip_df) > 0 && nzchar(chr_or_empty(trip_df$TRIPID[1]))) paste0("MAT_", trip_df$TRIPID[1], "_PLEOPOD.db") else "MAT_PLEOPOD.db"
+      db_base <- paste0("MAT_LAB_", lab_date, ".db")
       db_path <- file.path(input$db_folder, db_base)
       tryCatch({
         write_pleopod_db(db_path, trip_df, pleopod_df)
