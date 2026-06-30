@@ -123,6 +123,14 @@ pleopod <- function() {
 
   ui <- shiny::fluidPage(
     mat_js_tags(),
+    shiny::tags$script(shiny::HTML("
+      Shiny.addCustomMessageHandler('setLocationButton', function(msg) {
+        var button = $('#' + msg.id);
+        button.text(msg.label);
+        button.removeClass('btn-secondary btn-success');
+        button.addClass(msg.className);
+      });
+    ")),
     shiny::titlePanel("CLRN SOM50 LAB PLEOPOD SAMPLE DATA FORM"),
     shiny::h4("Load Existing Lab Database"),
     shiny::actionButton("load_db_file", "Choose .db File", class = "btn-secondary"),
@@ -181,6 +189,15 @@ pleopod <- function() {
       shiny::updateTextInput(session, paste0("pl_image_", i), value = "")
       shiny::updateTextInput(session, paste0("pl_observer_", i), value = "")
       shiny::updateTextInput(session, paste0("pl_trip_id_", i), value = "")
+      update_location_button(i, has_location = FALSE)
+    }
+
+    update_location_button <- function(i, has_location) {
+      session$sendCustomMessage("setLocationButton", list(
+        id = paste0("pl_location_", i),
+        label = if (isTRUE(has_location)) "Change Location" else "Add Location",
+        className = if (isTRUE(has_location)) "btn-success" else "btn-secondary"
+      ))
     }
 
     reset_rows <- function(target_rows = 1) {
@@ -235,6 +252,7 @@ pleopod <- function() {
           image = chr_or_empty(input[[paste0("pl_image_", i)]]),
           observer_val = chr_or_empty(input[[paste0("pl_observer_", i)]]),
           trip_id = chr_or_empty(input$loc_trip_id), has_location = TRUE))
+      update_location_button(i, has_location = TRUE)
     })
 
     shiny::observeEvent(input$load_db_file, {
@@ -264,8 +282,8 @@ pleopod <- function() {
         rv$autofill_active <- TRUE
         reset_rows(target_rows)
         populate_rows <- function(attempt = 1L, max_attempts = 10L) {
-          last_id <- paste0("pl_lobster_no_", target_rows)
-          if (is.null(shiny::isolate(input[[last_id]])) && attempt < max_attempts) {
+          last_id <- paste0("pl_lobster_no_", nrow(pleopod_df))
+          if (nrow(pleopod_df) > 0 && is.null(shiny::isolate(input[[last_id]])) && attempt < max_attempts) {
             session$onFlushed(function() populate_rows(attempt + 1L, max_attempts), once = TRUE)
             return()
           }
@@ -278,6 +296,7 @@ pleopod <- function() {
             shiny::updateTextInput(session, paste0("pl_image_", i), value = chr_or_empty(pleopod_df$IMAGE_FILE[i]))
             shiny::updateTextInput(session, paste0("pl_observer_", i), value = chr_or_empty(pleopod_df$OBSERVER[i]))
             shiny::updateTextInput(session, paste0("pl_trip_id_", i), value = chr_or_empty(pleopod_df$TRIPID[i]))
+            update_location_button(i, has_location = nzchar(chr_or_empty(pleopod_df$TRIPID[i])))
           }
           shiny::updateDateInput(session, "lab_date", value = lab_date_to_date(lab_date))
           rv$autofill_active <- FALSE
