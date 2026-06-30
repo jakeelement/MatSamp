@@ -10,8 +10,7 @@ pleopod()
 A Shiny app launched in the current R session.
 }
 \description{
-Starts a Shiny app for entering lab pleopod data against an existing at-sea
-trip database. Load the `.db` file created by \code{\link{at.sea}} first;
-the lobster IDs from that trip's SAMPLE table will populate the form
-automatically.
+Starts a standalone Shiny app for entering lab pleopod data. Each lobster row
+is entered directly and can be assigned its own trip and location information
+through the row's Add Location / Change Location button.
 }
