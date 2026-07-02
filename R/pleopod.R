@@ -9,6 +9,7 @@
 #' @import shiny
 #' @import DBI
 #' @import RSQLite
+#' @import shinyjs
 #' @export
 pleopod <- function() {
 
@@ -123,6 +124,7 @@ pleopod <- function() {
 
   ui <- shiny::fluidPage(
     mat_js_tags(),
+    shinyjs::useShinyjs(),
     shiny::tags$script(shiny::HTML("
       Shiny.addCustomMessageHandler('setLocationButton', function(msg) {
         var button = $('#' + msg.id);
@@ -214,6 +216,34 @@ pleopod <- function() {
       rv$row_count <- target_rows
     }
 
+    rebuild_pleopod_rows <- function(pleopod_df, target_rows) {
+      current_rows <- shiny::isolate(rv$row_count)
+      for (i in seq_len(current_rows)) {
+        shiny::removeUI(selector = paste0("#pleopod_row_", i), immediate = TRUE)
+      }
+
+      for (i in seq_len(target_rows)) {
+        has_data <- nrow(pleopod_df) >= i
+        trip_id <- if (has_data) chr_or_empty(pleopod_df$TRIPID[i]) else ""
+        shiny::insertUI(
+          selector = "#pleopod_rows_container",
+          where = "beforeEnd",
+          ui = pleopod_row_ui(
+            i,
+            lobster_no = if (has_data) pleopod_df$LOBSTER_NO[i] else NA,
+            cg_stage = if (has_data) chr_or_empty(pleopod_df$CG_STAGE[i]) else "",
+            moult_stage = if (has_data) chr_or_empty(pleopod_df$MOULT_STAGE[i]) else "",
+            image = if (has_data) chr_or_empty(pleopod_df$IMAGE_FILE[i]) else "",
+            observer_val = if (has_data) chr_or_empty(pleopod_df$OBSERVER[i]) else "",
+            trip_id = trip_id,
+            has_location = nzchar(trip_id)
+          )
+        )
+        register_location_observer(i)
+      }
+      rv$row_count <- target_rows
+    }
+
     register_location_observer(1)
 
     shiny::observe({
@@ -280,28 +310,14 @@ pleopod <- function() {
         }
         target_rows <- max(1, nrow(pleopod_df) + 1)
         rv$autofill_active <- TRUE
-        reset_rows(target_rows)
-        populate_rows <- function(attempt = 1L, max_attempts = 10L) {
-          last_id <- paste0("pl_lobster_no_", nrow(pleopod_df))
-          if (nrow(pleopod_df) > 0 && is.null(shiny::isolate(input[[last_id]])) && attempt < max_attempts) {
-            session$onFlushed(function() populate_rows(attempt + 1L, max_attempts), once = TRUE)
-            return()
-          }
-
-          for (i in seq_len(target_rows)) clear_pleopod_row(i)
-          for (i in seq_len(nrow(pleopod_df))) {
-            shiny::updateNumericInput(session, paste0("pl_lobster_no_", i), value = pleopod_df$LOBSTER_NO[i])
-            shiny::updateTextInput(session, paste0("pl_cg_stage_", i), value = chr_or_empty(pleopod_df$CG_STAGE[i]))
-            shiny::updateTextInput(session, paste0("pl_moult_stage_", i), value = chr_or_empty(pleopod_df$MOULT_STAGE[i]))
-            shiny::updateTextInput(session, paste0("pl_image_", i), value = chr_or_empty(pleopod_df$IMAGE_FILE[i]))
-            shiny::updateTextInput(session, paste0("pl_observer_", i), value = chr_or_empty(pleopod_df$OBSERVER[i]))
-            shiny::updateTextInput(session, paste0("pl_trip_id_", i), value = chr_or_empty(pleopod_df$TRIPID[i]))
-            update_location_button(i, has_location = nzchar(chr_or_empty(pleopod_df$TRIPID[i])))
+        rebuild_pleopod_rows(pleopod_df, target_rows)
+        shinyjs::delay(250, {
+          for (i in seq_len(target_rows)) {
+            update_location_button(i, has_location = i <= nrow(pleopod_df) && nzchar(chr_or_empty(pleopod_df$TRIPID[i])))
           }
           shiny::updateDateInput(session, "lab_date", value = lab_date_to_date(lab_date))
           rv$autofill_active <- FALSE
-        }
-        session$onFlushed(function() populate_rows(), once = TRUE)
+        })
         loaded_folder <- dirname(normalizePath(db_path, winslash = "/", mustWork = FALSE))
         shiny::updateTextInput(session, "db_folder", value = loaded_folder)
         rv$has_selected_db_folder <- TRUE
