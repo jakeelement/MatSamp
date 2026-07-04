@@ -10,6 +10,7 @@
 #' @import DBI
 #' @import RSQLite
 #' @import shinyjs
+#' @import shinyFeedback
 #' @export
 pleopod <- function() {
 
@@ -31,9 +32,9 @@ pleopod <- function() {
       shiny::fluidRow(
         shiny::column(width = 2, shiny::numericInput(paste0("pl_lobster_no_", i), if (i == 1) "LOBSTER NUMBER" else NULL,
           value = lobster_no, min = 1, step = 1)),
-        shiny::column(width = 1, shiny::textInput(paste0("pl_cg_stage_", i), if (i == 1) "CG STAGE" else NULL, value = cg_stage)),
-        shiny::column(width = 2, shiny::textInput(paste0("pl_moult_stage_", i), if (i == 1) "MOULT STAGE" else NULL, value = moult_stage)),
-        shiny::column(width = 2, shiny::textInput(paste0("pl_image_", i), if (i == 1) "PLEOPOD IMAGE FILE NAME(S)" else NULL, value = image)),
+        shiny::column(width = 1, shiny::selectInput(paste0("pl_cg_stage_", i), if (i == 1) "CG STAGE" else NULL, choices = c("", "1", "2", "3", "4", "9"), selected = cg_stage)),
+        shiny::column(width = 2, shiny::selectInput(paste0("pl_moult_stage_", i), if (i == 1) "MOULT STAGE" else NULL, choices = c("", "0", "1.0", "1.5", "2.0", "2.5", "3.0", "3.5", "4.0", "4.5", "5.0", "5.5"), selected = moult_stage)),
+        shiny::column(width = 2, shiny::textInput(paste0("pl_image_", i), if (i == 1) "PLEOPOD IMAGE FILE NAME(S)" else NULL, value = image), shiny::actionButton(paste0("pl_image_select_", i), "Select Image", class = "btn-secondary btn-xs")),
         shiny::column(width = 1, shiny::textInput(paste0("pl_observer_", i), if (i == 1) "OBSERVER" else NULL, value = observer_val)),
         shiny::column(width = 2, shiny::actionButton(paste0("pl_location_", i), btn_label, class = btn_class)),
         shiny::column(width = 2, htmltools::tagAppendAttributes(
@@ -88,25 +89,25 @@ pleopod <- function() {
   db_ensure_pleopod_tables <- function(con) {
     DBI::dbExecute(con, "PRAGMA foreign_keys = ON")
     DBI::dbExecute(con, "
-      CREATE TABLE IF NOT EXISTS TRIP (
+      CREATE TABLE IF NOT EXISTS MAT_TRIP (
         TRIPID TEXT PRIMARY KEY, ORG TEXT, TRIP_DATE TEXT, PORT TEXT, LFA TEXT, SAMPLER TEXT,
         LAT TEXT, LONG TEXT, GRID REAL, DEPTH REAL
       )")
     DBI::dbExecute(con, "
-      CREATE TABLE IF NOT EXISTS LAB_PLEOPOD (
+      CREATE TABLE IF NOT EXISTS MAT_PLEOPOD (
         TRIPID TEXT, LAB_DATE TEXT, ROW_NO INTEGER NOT NULL, LOBSTER_NO INTEGER,
         CG_STAGE TEXT, MOULT_STAGE TEXT, IMAGE_FILE TEXT, OBSERVER TEXT,
         PRIMARY KEY (ROW_NO),
-        FOREIGN KEY (TRIPID) REFERENCES TRIP(TRIPID)
+        FOREIGN KEY (TRIPID) REFERENCES MAT_TRIP(TRIPID)
       )")
   }
 
   read_pleopod_db <- function(db_path) {
     con <- DBI::dbConnect(RSQLite::SQLite(), dbname = db_path)
     on.exit(DBI::dbDisconnect(con), add = TRUE)
-    if (!DBI::dbExistsTable(con, "LAB_PLEOPOD")) stop("LAB_PLEOPOD table not found")
-    trip_df <- if (DBI::dbExistsTable(con, "TRIP")) DBI::dbReadTable(con, "TRIP") else data.frame()
-    pleopod_df <- DBI::dbGetQuery(con, "SELECT * FROM LAB_PLEOPOD ORDER BY ROW_NO")
+    if (!DBI::dbExistsTable(con, "MAT_PLEOPOD")) stop("MAT_PLEOPOD table not found")
+    trip_df <- if (DBI::dbExistsTable(con, "MAT_TRIP")) DBI::dbReadTable(con, "MAT_TRIP") else data.frame()
+    pleopod_df <- DBI::dbGetQuery(con, "SELECT * FROM MAT_PLEOPOD ORDER BY ROW_NO")
     list(trips = trip_df, pleopod = pleopod_df)
   }
 
@@ -114,10 +115,10 @@ pleopod <- function() {
     con <- DBI::dbConnect(RSQLite::SQLite(), dbname = db_path)
     on.exit(DBI::dbDisconnect(con), add = TRUE)
     db_ensure_pleopod_tables(con)
-    DBI::dbExecute(con, "DELETE FROM LAB_PLEOPOD")
-    DBI::dbExecute(con, "DELETE FROM TRIP")
-    if (nrow(trip_df) > 0) DBI::dbWriteTable(con, "TRIP", trip_df, append = TRUE, row.names = FALSE)
-    if (nrow(pleopod_df) > 0) DBI::dbWriteTable(con, "LAB_PLEOPOD", pleopod_df, append = TRUE, row.names = FALSE)
+    DBI::dbExecute(con, "DELETE FROM MAT_PLEOPOD")
+    DBI::dbExecute(con, "DELETE FROM MAT_TRIP")
+    if (nrow(trip_df) > 0) DBI::dbWriteTable(con, "MAT_TRIP", trip_df, append = TRUE, row.names = FALSE)
+    if (nrow(pleopod_df) > 0) DBI::dbWriteTable(con, "MAT_PLEOPOD", pleopod_df, append = TRUE, row.names = FALSE)
   }
 
   # --- UI -------------------------------------------------------------------
@@ -125,7 +126,14 @@ pleopod <- function() {
   ui <- shiny::fluidPage(
     mat_js_tags(),
     shinyjs::useShinyjs(),
+    shinyFeedback::useShinyFeedback(),
     shiny::tags$script(shiny::HTML("
+      Shiny.addCustomMessageHandler('toggleButtons', function(msg) {
+        $('button').prop('disabled', msg.disabled);
+      });
+      Shiny.addCustomMessageHandler('toggleSaveLocation', function(msg) {
+        $('#save_location').prop('disabled', msg.disabled);
+      });
       Shiny.addCustomMessageHandler('setLocationButton', function(msg) {
         var button = $('#' + msg.id);
         button.text(msg.label);
@@ -157,6 +165,7 @@ pleopod <- function() {
       db_folder_path = "", has_selected_db_folder = FALSE, db_status = ""
     )
     location_observers <- integer()
+    image_observers <- integer()
 
     lobster_numbers <- function(n = rv$row_count) {
       vapply(seq_len(n), function(i) {
@@ -184,10 +193,26 @@ pleopod <- function() {
       location_observers <<- c(location_observers, i)
     }
 
+    register_image_observer <- function(i) {
+      if (i %in% image_observers) return()
+      local({
+        ii <- i
+        shiny::observeEvent(input[[paste0("pl_image_select_", ii)]], {
+          image_path_tcl <- with_topmost_tk(function() tcltk::tkgetOpenFile(
+            filetypes = "{{Image files} {.png .jpg .jpeg .tif .tiff .bmp .gif}} {{All files} *}",
+            title = "Choose pleopod image"
+          ))
+          image_path <- as.character(tcltk::tclvalue(image_path_tcl))
+          if (nzchar(image_path)) shiny::updateTextInput(session, paste0("pl_image_", ii), value = normalizePath(image_path, winslash = "/", mustWork = FALSE))
+        }, ignoreInit = TRUE)
+      })
+      image_observers <<- c(image_observers, i)
+    }
+
     clear_pleopod_row <- function(i) {
       shiny::updateNumericInput(session, paste0("pl_lobster_no_", i), value = NA)
-      shiny::updateTextInput(session, paste0("pl_cg_stage_", i), value = "")
-      shiny::updateTextInput(session, paste0("pl_moult_stage_", i), value = "")
+      shiny::updateSelectInput(session, paste0("pl_cg_stage_", i), selected = "")
+      shiny::updateSelectInput(session, paste0("pl_moult_stage_", i), selected = "")
       shiny::updateTextInput(session, paste0("pl_image_", i), value = "")
       shiny::updateTextInput(session, paste0("pl_observer_", i), value = "")
       shiny::updateTextInput(session, paste0("pl_trip_id_", i), value = "")
@@ -209,6 +234,7 @@ pleopod <- function() {
         for (i in seq(current_rows + 1, target_rows)) {
           shiny::insertUI(selector = "#pleopod_rows_container", where = "beforeEnd", ui = pleopod_row_ui(i, has_location = has_location(i)))
           register_location_observer(i)
+          register_image_observer(i)
         }
       } else if (current_rows > target_rows) {
         for (i in seq(target_rows + 1, current_rows)) shiny::removeUI(selector = paste0("#pleopod_row_", i), immediate = TRUE)
@@ -240,11 +266,57 @@ pleopod <- function() {
           )
         )
         register_location_observer(i)
+        register_image_observer(i)
       }
       rv$row_count <- target_rows
     }
 
     register_location_observer(1)
+    register_image_observer(1)
+
+    # --- Error checks -------------------------------------------------------
+
+    # Duplicate LOBSTER NUMBER feedback
+    shiny::observe({
+      n <- rv$row_count
+      values <- lobster_numbers(n)
+      non_na <- values[!is.na(values)]
+      dupes <- unique(non_na[duplicated(non_na)])
+      for (i in seq_len(n)) {
+        v <- values[[i]]
+        shinyFeedback::feedbackDanger(paste0("pl_lobster_no_", i), !is.na(v) && v %in% dupes, "Duplicate LOBSTER NUMBER")
+      }
+    })
+
+    # Location coordinate validation feedback
+    shiny::observe({
+      lat <- input$loc_lat
+      if (is.null(lat) || !nzchar(lat)) { shinyFeedback::hideFeedback("loc_lat"); return() }
+      shinyFeedback::feedbackDanger("loc_lat", !is_valid_ddmm(lat, "lat"),
+        "Must be DDMM.MM — degrees 00-89, minutes 00-59 (e.g. 4430.55)")
+    })
+
+    shiny::observe({
+      long <- input$loc_long
+      if (is.null(long) || !nzchar(long)) { shinyFeedback::hideFeedback("loc_long"); return() }
+      shinyFeedback::feedbackDanger("loc_long", !is_valid_ddmm(long, "long"),
+        "Must be DDMM.MM — minutes 00-59 (e.g. 6645.20)")
+    })
+
+    # Gate buttons on validation errors
+    shiny::observe({
+      values <- lobster_numbers(rv$row_count)
+      lob_err <- any(duplicated(values[!is.na(values)]))
+      session$sendCustomMessage("toggleButtons", list(disabled = lob_err))
+
+      lat_val <- input$loc_lat
+      long_val <- input$loc_long
+      lat_err <- !is.null(lat_val) && nzchar(lat_val) && !is_valid_ddmm(lat_val, "lat")
+      long_err <- !is.null(long_val) && nzchar(long_val) && !is_valid_ddmm(long_val, "long")
+      session$sendCustomMessage("toggleSaveLocation", list(disabled = lob_err || lat_err || long_err))
+    })
+
+    # --- Data entry automation ---------------------------------------------
 
     shiny::observe({
       if (isTRUE(rv$autofill_active)) return()
@@ -258,6 +330,23 @@ pleopod <- function() {
       org <- input$loc_org; date <- input$loc_date
       if (is.null(org) || is.null(date)) return()
       shiny::updateTextInput(session, "loc_trip_id", value = if (nzchar(org)) paste0(org, format(date, "%d%m%y")) else "")
+    })
+
+    shiny::observe({
+      trip_id <- input$loc_trip_id
+      if (is.null(trip_id) || !nzchar(trip_id) || nrow(rv$trips) == 0) return()
+      loc <- rv$trips[rv$trips$TRIPID == trip_id, , drop = FALSE]
+      if (nrow(loc) == 0) return()
+      loc <- loc[1, , drop = FALSE]
+      shiny::updateTextInput(session, "loc_org", value = chr_or_empty(loc$ORG[1]))
+      shiny::updateDateInput(session, "loc_date", value = chr_or_empty(loc$TRIP_DATE[1]))
+      shiny::updateTextInput(session, "loc_port", value = chr_or_empty(loc$PORT[1]))
+      shiny::updateSelectInput(session, "loc_lfa", selected = chr_or_empty(loc$LFA[1]))
+      shiny::updateTextInput(session, "loc_sampler", value = chr_or_empty(loc$SAMPLER[1]))
+      shiny::updateTextInput(session, "loc_lat", value = chr_or_empty(loc$LAT[1]))
+      shiny::updateTextInput(session, "loc_long", value = chr_or_empty(loc$LONG[1]))
+      shiny::updateNumericInput(session, "loc_grid", value = loc$GRID[1])
+      shiny::updateNumericInput(session, "loc_depth", value = loc$DEPTH[1])
     })
 
     shiny::observeEvent(input$save_location, {
@@ -296,7 +385,7 @@ pleopod <- function() {
           lab_dates <- unique(stats::na.omit(loaded$pleopod$LAB_DATE))
           if (length(lab_dates) == 1) lab_date <- lab_dates[[1]]
         }
-        if (is.na(lab_date) || !nzchar(lab_date)) stop("Could not determine LAB DATE from MAT_LAB_ddmmyy.db filename or LAB_PLEOPOD table")
+        if (is.na(lab_date) || !nzchar(lab_date)) stop("Could not determine LAB DATE from MAT_LAB_ddmmyy.db filename or MAT_PLEOPOD table")
 
         pleopod_df <- loaded$pleopod[loaded$pleopod$LAB_DATE == lab_date, , drop = FALSE]
         rv$trips <- loaded$trips
