@@ -105,6 +105,7 @@ pleopod <- function() {
   read_pleopod_db <- function(db_path) {
     con <- DBI::dbConnect(RSQLite::SQLite(), dbname = db_path)
     on.exit(DBI::dbDisconnect(con), add = TRUE)
+    db_ensure_pleopod_tables(con)
     if (!DBI::dbExistsTable(con, "MAT_PLEOPOD")) stop("MAT_PLEOPOD table not found")
     trip_df <- if (DBI::dbExistsTable(con, "MAT_TRIP")) DBI::dbReadTable(con, "MAT_TRIP") else data.frame()
     pleopod_df <- DBI::dbGetQuery(con, "SELECT * FROM MAT_PLEOPOD ORDER BY ROW_NO")
@@ -112,13 +113,59 @@ pleopod <- function() {
   }
 
   write_pleopod_db <- function(db_path, trip_df, pleopod_df) {
+    
     con <- DBI::dbConnect(RSQLite::SQLite(), dbname = db_path)
     on.exit(DBI::dbDisconnect(con), add = TRUE)
+    
     db_ensure_pleopod_tables(con)
-    DBI::dbExecute(con, "DELETE FROM MAT_PLEOPOD")
-    DBI::dbExecute(con, "DELETE FROM MAT_TRIP")
-    if (nrow(trip_df) > 0) DBI::dbWriteTable(con, "MAT_TRIP", trip_df, append = TRUE, row.names = FALSE)
-    if (nrow(pleopod_df) > 0) DBI::dbWriteTable(con, "MAT_PLEOPOD", pleopod_df, append = TRUE, row.names = FALSE)
+    
+    trip_df <- trip_df[!is.na(trip_df$TRIPID) & trip_df$TRIPID != "", ]
+    
+    DBI::dbWithTransaction(con, {
+      
+      ## ----- Upsert MAT_TRIP -----
+      
+      if (nrow(trip_df) > 0) {
+        
+        trip_cols <- names(trip_df)
+        update_cols <- setdiff(trip_cols, "TRIPID")
+        
+        sql <- paste0(
+          "INSERT INTO MAT_TRIP (",
+          paste(trip_cols, collapse = ", "),
+          ") VALUES (",
+          paste0(":", trip_cols, collapse = ", "),
+          ") ON CONFLICT(TRIPID) DO UPDATE SET ",
+          paste(
+            sprintf("%s = excluded.%s", update_cols, update_cols),
+            collapse = ", "
+          )
+        )
+        
+        for (i in seq_len(nrow(trip_df))) {
+          DBI::dbExecute(
+            con,
+            sql,
+            params = as.list(trip_df[i, trip_cols, drop = FALSE])
+          )
+        }
+      }
+      
+      ## ----- Replace MAT_PLEOPOD -----
+      
+      DBI::dbExecute(con, "DELETE FROM MAT_PLEOPOD")
+      
+      if (nrow(pleopod_df) > 0) {
+        DBI::dbWriteTable(
+          con,
+          "MAT_PLEOPOD",
+          pleopod_df,
+          append = TRUE,
+          row.names = FALSE
+        )
+      }
+      
+    })
   }
 
   # --- UI -------------------------------------------------------------------
@@ -396,6 +443,8 @@ pleopod <- function() {
             loc <- loaded$trips[loaded$trips$TRIPID == pleopod_df$TRIPID[i], , drop = FALSE]
             if (nrow(loc) > 0) rv$locations[[as.character(i)]] <- loc[1, , drop = FALSE]
           }
+        }else{ ## create pleopod table if it doesn't exist in loaded db
+          
         }
         target_rows <- max(1, nrow(pleopod_df) + 1)
         rv$autofill_active <- TRUE

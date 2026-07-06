@@ -123,6 +123,7 @@ ovary <- function() {
   read_ovary_db <- function(db_path) {
     con <- DBI::dbConnect(RSQLite::SQLite(), dbname = db_path)
     on.exit(DBI::dbDisconnect(con), add = TRUE)
+    db_ensure_ovary_tables(con)
     if (!DBI::dbExistsTable(con, "MAT_OVARY")) stop("MAT_OVARY table not found")
     trip_df <- if (DBI::dbExistsTable(con, "MAT_TRIP")) DBI::dbReadTable(con, "MAT_TRIP") else data.frame()
     ovary_df <- DBI::dbGetQuery(con, "SELECT * FROM MAT_OVARY ORDER BY ROW_NO")
@@ -132,11 +133,56 @@ ovary <- function() {
   write_ovary_db <- function(db_path, trip_df, ovary_df) {
     con <- DBI::dbConnect(RSQLite::SQLite(), dbname = db_path)
     on.exit(DBI::dbDisconnect(con), add = TRUE)
+    
     db_ensure_ovary_tables(con)
-    DBI::dbExecute(con, "DELETE FROM MAT_OVARY")
-    DBI::dbExecute(con, "DELETE FROM MAT_TRIP")
-    if (nrow(trip_df) > 0) DBI::dbWriteTable(con, "MAT_TRIP", trip_df, append = TRUE, row.names = FALSE)
-    if (nrow(ovary_df) > 0) DBI::dbWriteTable(con, "MAT_OVARY", ovary_df, append = TRUE, row.names = FALSE)
+    
+    trip_df <- trip_df[!is.na(trip_df$TRIPID) & trip_df$TRIPID != "", ]
+    
+    DBI::dbWithTransaction(con, {
+      
+      ## ----- Upsert MAT_TRIP -----
+      
+      if (nrow(trip_df) > 0) {
+        
+        trip_cols <- names(trip_df)
+        update_cols <- setdiff(trip_cols, "TRIPID")
+        
+        sql <- paste0(
+          "INSERT INTO MAT_TRIP (",
+          paste(trip_cols, collapse = ", "),
+          ") VALUES (",
+          paste0(":", trip_cols, collapse = ", "),
+          ") ON CONFLICT(TRIPID) DO UPDATE SET ",
+          paste(
+            sprintf("%s = excluded.%s", update_cols, update_cols),
+            collapse = ", "
+          )
+        )
+        
+        for (i in seq_len(nrow(trip_df))) {
+          DBI::dbExecute(
+            con,
+            sql,
+            params = as.list(trip_df[i, trip_cols, drop = FALSE])
+          )
+        }
+      }
+      
+      ## ----- Replace MAT_OVARY -----
+      
+      DBI::dbExecute(con, "DELETE FROM MAT_OVARY")
+      
+      if (nrow(ovary_df) > 0) {
+        DBI::dbWriteTable(
+          con,
+          "MAT_OVARY",
+          ovary_df,
+          append = TRUE,
+          row.names = FALSE
+        )
+      }
+      
+    })
   }
 
   # --- UI -------------------------------------------------------------------
