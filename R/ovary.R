@@ -342,7 +342,7 @@ ovary <- function() {
       dupes <- unique(non_na[duplicated(non_na)])
       for (i in seq_len(n)) {
         v <- values[[i]]
-        shinyFeedback::feedbackDanger(paste0("ov_lobster_no_", i), !is.na(v) && v %in% dupes, "Duplicate LOBSTER NUMBER")
+        shinyFeedback::feedbackWarning(paste0("ov_lobster_no_", i), !is.na(v) && v %in% dupes, "Duplicate LOBSTER NUMBER")
       }
     })
 
@@ -381,8 +381,8 @@ ovary <- function() {
 
     # Gate buttons on validation errors
     shiny::observe({
-      values <- lobster_numbers(rv$row_count)
-      lob_err <- any(duplicated(values[!is.na(values)]))
+      # values <- lobster_numbers(rv$row_count)
+      # lob_err <- any(duplicated(values[!is.na(values)]))
       whole_weight_err <- any(vapply(seq_len(rv$row_count), function(i) {
         val <- input[[paste0("ov_whole_weight_", i)]]
         !is.null(val) && !is.na(val) && (val < 100 || val > 1000)
@@ -391,7 +391,7 @@ ovary <- function() {
         val <- input[[paste0("ov_ovary_weight_", i)]]
         !is.null(val) && !is.na(val) && val > 1000
       }, logical(1)))
-      form_err <- lob_err || whole_weight_err || ovary_weight_err
+      form_err <- whole_weight_err || ovary_weight_err
       session$sendCustomMessage("toggleButtons", list(disabled = form_err))
 
       lat_val <- input$loc_lat

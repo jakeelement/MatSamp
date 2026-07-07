@@ -331,7 +331,7 @@ pleopod <- function() {
       dupes <- unique(non_na[duplicated(non_na)])
       for (i in seq_len(n)) {
         v <- values[[i]]
-        shinyFeedback::feedbackDanger(paste0("pl_lobster_no_", i), !is.na(v) && v %in% dupes, "Duplicate LOBSTER NUMBER")
+        shinyFeedback::feedbackWarning(paste0("pl_lobster_no_", i), !is.na(v) && v %in% dupes, "Duplicate LOBSTER NUMBER")
       }
     })
 
@@ -352,15 +352,15 @@ pleopod <- function() {
 
     # Gate buttons on validation errors
     shiny::observe({
-      values <- lobster_numbers(rv$row_count)
-      lob_err <- any(duplicated(values[!is.na(values)]))
-      session$sendCustomMessage("toggleButtons", list(disabled = lob_err))
+      # values <- lobster_numbers(rv$row_count)
+      # lob_err <- any(duplicated(values[!is.na(values)]))
+      # session$sendCustomMessage("toggleButtons", list(disabled = lob_err))
 
       lat_val <- input$loc_lat
       long_val <- input$loc_long
       lat_err <- !is.null(lat_val) && nzchar(lat_val) && !is_valid_ddmm(lat_val, "lat")
       long_err <- !is.null(long_val) && nzchar(long_val) && !is_valid_ddmm(long_val, "long")
-      session$sendCustomMessage("toggleSaveLocation", list(disabled = lob_err || lat_err || long_err))
+      session$sendCustomMessage("toggleSaveLocation", list(disabled = lat_err || long_err))
     })
 
     # --- Data entry automation ---------------------------------------------
