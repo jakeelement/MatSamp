@@ -80,7 +80,7 @@ pleopod <- function() {
         shiny::column(width = 3, shiny::numericInput("loc_grid", "GRID", value = location$GRID[1], min = 1, step = 1)),
         shiny::column(width = 3, shiny::numericInput("loc_depth", "DEPTH (FM)", value = location$DEPTH[1], min = 0))
       ),
-      footer = shiny::tagList(shiny::modalButton("Cancel"), shiny::actionButton("save_location", "Save Location", class = "btn-primary"))
+      footer = shiny::tagList(shiny::modalButton("Cancel"), shiny::actionButton("save_location", "Add Location", class = "btn-primary"))
     )
   }
 
