@@ -70,7 +70,7 @@ pleopod <- function() {
       ),
       shiny::fluidRow(
         shiny::column(width = 3, shiny::selectInput("loc_lfa", "LFA",
-          choices = c("", "27", "28", "29", "30", "31A", "31B", "32", "33", "34", "35", "36", "37A", "37B", "38"),
+          choices = c("", "27", "28", "29", "30", "31A", "31B", "32", "33", "34", "35", "36", "37A", "37B", "38","40","41"),
           selected = chr_or_empty(location$LFA[1]))),
         shiny::column(width = 3, shiny::textInput("loc_sampler", "SAMPLER", value = chr_or_empty(location$SAMPLER[1]))),
         shiny::column(width = 3, htmltools::tagAppendAttributes(shiny::textInput("loc_lat", "LAT (DDMM.MM)", value = chr_or_empty(location$LAT[1])), .cssSelector = "input", maxlength = "7")),

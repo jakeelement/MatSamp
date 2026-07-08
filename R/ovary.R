@@ -86,7 +86,7 @@ ovary <- function() {
       ),
       shiny::fluidRow(
         shiny::column(width = 3, shiny::selectInput("loc_lfa", "LFA",
-          choices = c("", "27", "28", "29", "30", "31A", "31B", "32", "33", "34", "35", "36", "37A", "37B", "38"),
+          choices = c("", "27", "28", "29", "30", "31A", "31B", "32", "33", "34", "35", "36", "37A", "37B", "38","40","41"),
           selected = chr_or_empty(location$LFA[1]))),
         shiny::column(width = 3, shiny::textInput("loc_sampler", "SAMPLER", value = chr_or_empty(location$SAMPLER[1]))),
         shiny::column(width = 3, htmltools::tagAppendAttributes(shiny::textInput("loc_lat", "LAT (DDMM.MM)", value = chr_or_empty(location$LAT[1])), .cssSelector = "input", maxlength = "7")),
@@ -355,8 +355,8 @@ ovary <- function() {
         shinyFeedback::feedbackWarning(paste0("ov_carapace_length_", i), carapace_warn, "Expected range is 40-120 mm")
 
         whole_weight <- input[[paste0("ov_whole_weight_", i)]]
-        whole_weight_err <- !is.null(whole_weight) && !is.na(whole_weight) && (whole_weight < 100 || whole_weight > 1000)
-        shinyFeedback::feedbackDanger(paste0("ov_whole_weight_", i), whole_weight_err, "Whole Weight must be between 100 and 1000 g")
+        whole_weight_err <- !is.null(whole_weight) && !is.na(whole_weight) && (whole_weight < 100 || whole_weight > 1500)
+        shinyFeedback::feedbackWarning(paste0("ov_whole_weight_", i), whole_weight_err, "Whole Weight should be between 100 and 1500 g")
 
         ovary_weight <- input[[paste0("ov_ovary_weight_", i)]]
         ovary_weight_err <- !is.null(ovary_weight) && !is.na(ovary_weight) && ovary_weight > 1000
@@ -383,15 +383,15 @@ ovary <- function() {
     shiny::observe({
       # values <- lobster_numbers(rv$row_count)
       # lob_err <- any(duplicated(values[!is.na(values)]))
-      whole_weight_err <- any(vapply(seq_len(rv$row_count), function(i) {
-        val <- input[[paste0("ov_whole_weight_", i)]]
-        !is.null(val) && !is.na(val) && (val < 100 || val > 1000)
-      }, logical(1)))
+      # whole_weight_err <- any(vapply(seq_len(rv$row_count), function(i) {
+      #   val <- input[[paste0("ov_whole_weight_", i)]]
+      #   !is.null(val) && !is.na(val) && (val < 100 || val > 1000)
+      # }, logical(1)))
       ovary_weight_err <- any(vapply(seq_len(rv$row_count), function(i) {
         val <- input[[paste0("ov_ovary_weight_", i)]]
         !is.null(val) && !is.na(val) && val > 1000
       }, logical(1)))
-      form_err <- whole_weight_err || ovary_weight_err
+      form_err <- ovary_weight_err
       session$sendCustomMessage("toggleButtons", list(disabled = form_err))
 
       lat_val <- input$loc_lat
