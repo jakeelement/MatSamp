@@ -220,6 +220,13 @@ pleopod <- function() {
         if (is.null(val) || is.na(val)) NA_integer_ else as.integer(val)
       }, integer(1))
     }
+    
+    lobster_trips <- function(n = rv$row_count) {
+      vapply(seq_len(n), function(i) {
+        val <- input[[paste0("pl_trip_id_", i)]]
+        if (is.null(val) || is.na(val)) "" else as.character(val)
+      }, character(1))
+    }
 
     has_location <- function(i) {
       loc <- rv$locations[[as.character(i)]]
@@ -294,27 +301,29 @@ pleopod <- function() {
       for (i in seq_len(current_rows)) {
         shiny::removeUI(selector = paste0("#pleopod_row_", i), immediate = TRUE)
       }
-
-      for (i in seq_len(target_rows)) {
-        has_data <- nrow(pleopod_df) >= i
-        trip_id <- if (has_data) chr_or_empty(pleopod_df$TRIPID[i]) else ""
-        shiny::insertUI(
-          selector = "#pleopod_rows_container",
-          where = "beforeEnd",
-          ui = pleopod_row_ui(
-            i,
-            lobster_no = if (has_data) pleopod_df$LOBSTER_NO[i] else NA,
-            cg_stage = if (has_data) chr_or_empty(pleopod_df$CG_STAGE[i]) else "",
-            moult_stage = if (has_data) chr_or_empty(pleopod_df$MOULT_STAGE[i]) else "",
-            image = if (has_data) chr_or_empty(pleopod_df$IMAGE_FILE[i]) else "",
-            observer_val = if (has_data) chr_or_empty(pleopod_df$OBSERVER[i]) else "",
-            trip_id = trip_id,
-            has_location = nzchar(trip_id)
+      
+        for (i in seq_len(target_rows)) {
+          has_data <- nrow(pleopod_df) >= i
+          trip_id <- if (has_data) chr_or_empty(pleopod_df$TRIPID[i]) else ""
+          shiny::insertUI(
+            selector = "#pleopod_rows_container",
+            where = "beforeEnd",
+            ui = pleopod_row_ui(
+              i,
+              lobster_no = if (has_data) pleopod_df$LOBSTER_NO[i] else NA,
+              cg_stage = if (has_data) chr_or_empty(pleopod_df$CG_STAGE[i]) else "",
+              moult_stage = if (has_data) chr_or_empty(pleopod_df$MOULT_STAGE[i]) else "",
+              image = if (has_data) chr_or_empty(pleopod_df$IMAGE_FILE[i]) else "",
+              observer_val = if (has_data) chr_or_empty(pleopod_df$OBSERVER[i]) else "",
+              trip_id = trip_id,
+              has_location = nzchar(trip_id)
+            )
           )
-        )
-        register_location_observer(i)
-        register_image_observer(i)
-      }
+          register_location_observer(i)
+          register_image_observer(i)
+        }
+
+
       rv$row_count <- target_rows
     }
 
@@ -326,12 +335,15 @@ pleopod <- function() {
     # Duplicate LOBSTER NUMBER feedback
     shiny::observe({
       n <- rv$row_count
-      values <- lobster_numbers(n)
-      non_na <- values[!is.na(values)]
-      dupes <- unique(non_na[duplicated(non_na)])
+      nums  <- lobster_numbers(n)
+      trips <- lobster_trips(n)
+      num_trip <- paste(nums, trips, sep = "|")
+      # Find duplicated trip/lobster combinations
+      dupes <- unique(num_trip[duplicated(num_trip)])
       for (i in seq_len(n)) {
-        v <- values[[i]]
-        shinyFeedback::feedbackWarning(paste0("pl_lobster_no_", i), !is.na(v) && v %in% dupes, "Duplicate LOBSTER NUMBER")
+        shinyFeedback::feedbackDanger(paste0("pl_lobster_no_", i),
+                                       num_trip[i] %in% dupes,
+                                       "Duplicate LOBSTER NUMBER and TRIPID")
       }
     })
 
@@ -352,15 +364,17 @@ pleopod <- function() {
 
     # Gate buttons on validation errors
     shiny::observe({
-      # values <- lobster_numbers(rv$row_count)
-      # lob_err <- any(duplicated(values[!is.na(values)]))
-      # session$sendCustomMessage("toggleButtons", list(disabled = lob_err))
+      nums <- lobster_numbers(rv$row_count)
+      trips <- lobster_trips(rv$row_count)
+      num_trip <- paste(nums, trips, sep = "|")
+      lob_err <- any(duplicated(num_trip))
+      #session$sendCustomMessage("toggleButtons", list(disabled = lob_err))
 
       lat_val <- input$loc_lat
       long_val <- input$loc_long
       lat_err <- !is.null(lat_val) && nzchar(lat_val) && !is_valid_ddmm(lat_val, "lat")
       long_err <- !is.null(long_val) && nzchar(long_val) && !is_valid_ddmm(long_val, "long")
-      session$sendCustomMessage("toggleSaveLocation", list(disabled = lat_err || long_err))
+      session$sendCustomMessage("toggleSaveLocation", list(disabled = lat_err || long_err || lob_err))
     })
 
     # --- Data entry automation ---------------------------------------------
@@ -449,7 +463,7 @@ pleopod <- function() {
         target_rows <- max(1, nrow(pleopod_df) + 1)
         rv$autofill_active <- TRUE
         rebuild_pleopod_rows(pleopod_df, target_rows)
-        shinyjs::delay(250, {
+        shinyjs::delay((250+ nrow(pleopod_df)*30), {
           for (i in seq_len(target_rows)) {
             update_location_button(i, has_location = i <= nrow(pleopod_df) && nzchar(chr_or_empty(pleopod_df$TRIPID[i])))
           }

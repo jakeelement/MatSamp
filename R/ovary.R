@@ -236,6 +236,13 @@ ovary <- function() {
         if (is.null(val) || is.na(val)) NA_integer_ else as.integer(val)
       }, integer(1))
     }
+    
+    lobster_trips <- function(n = rv$row_count) {
+      vapply(seq_len(n), function(i) {
+        val <- input[[paste0("ov_trip_id_", i)]]
+        if (is.null(val) || is.na(val)) "" else as.character(val)
+      }, character(1))
+    }
 
     has_location <- function(i) {
       loc <- rv$locations[[as.character(i)]]
@@ -337,12 +344,15 @@ ovary <- function() {
     # Duplicate LOBSTER NUMBER feedback
     shiny::observe({
       n <- rv$row_count
-      values <- lobster_numbers(n)
-      non_na <- values[!is.na(values)]
-      dupes <- unique(non_na[duplicated(non_na)])
+      nums  <- lobster_numbers(n)
+      trips <- lobster_trips(n)
+      num_trip <- paste(nums, trips, sep = "|")
+      # Find duplicated trip/lobster combinations
+      dupes <- unique(num_trip[duplicated(num_trip)])
       for (i in seq_len(n)) {
-        v <- values[[i]]
-        shinyFeedback::feedbackWarning(paste0("ov_lobster_no_", i), !is.na(v) && v %in% dupes, "Duplicate LOBSTER NUMBER")
+        shinyFeedback::feedbackDanger(paste0("ov_lobster_no_", i), 
+                                      num_trip[i] %in% dupes, 
+                                      "Duplicate LOBSTER NUMBER and TRIPID")
       }
     })
 
@@ -381,8 +391,11 @@ ovary <- function() {
 
     # Gate buttons on validation errors
     shiny::observe({
-      # values <- lobster_numbers(rv$row_count)
-      # lob_err <- any(duplicated(values[!is.na(values)]))
+      nums <- lobster_numbers(rv$row_count)
+      trips <- lobster_trips(rv$row_count)
+      num_trip <- paste(nums, trips, sep = "|")
+      lob_err <- any(duplicated(num_trip))
+      
       # whole_weight_err <- any(vapply(seq_len(rv$row_count), function(i) {
       #   val <- input[[paste0("ov_whole_weight_", i)]]
       #   !is.null(val) && !is.na(val) && (val < 100 || val > 1000)
@@ -392,7 +405,7 @@ ovary <- function() {
         !is.null(val) && !is.na(val) && val > 1000
       }, logical(1)))
       form_err <- ovary_weight_err
-      session$sendCustomMessage("toggleButtons", list(disabled = form_err))
+      session$sendCustomMessage("toggleButtons", list(disabled = form_err || lob_err))
 
       lat_val <- input$loc_lat
       long_val <- input$loc_long
@@ -492,7 +505,7 @@ ovary <- function() {
         target_rows <- max(1, nrow(ovary_df) + 1)
         rv$autofill_active <- TRUE
         rebuild_ovary_rows(ovary_df, target_rows)
-        shinyjs::delay(250, {
+        shinyjs::delay((250+ nrow(ovary_df)*30), {
           for (i in seq_len(target_rows)) {
             update_location_button(i, has_location = i <= nrow(ovary_df) && nzchar(chr_or_empty(ovary_df$TRIPID[i])))
           }
