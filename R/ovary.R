@@ -505,7 +505,7 @@ ovary <- function() {
         target_rows <- max(1, nrow(ovary_df) + 1)
         rv$autofill_active <- TRUE
         rebuild_ovary_rows(ovary_df, target_rows)
-        shinyjs::delay((250+ nrow(ovary_df)*30), {
+        shinyjs::delay((250+ nrow(ovary_df)*100), {
           for (i in seq_len(target_rows)) {
             update_location_button(i, has_location = i <= nrow(ovary_df) && nzchar(chr_or_empty(ovary_df$TRIPID[i])))
           }

@@ -463,7 +463,7 @@ pleopod <- function() {
         target_rows <- max(1, nrow(pleopod_df) + 1)
         rv$autofill_active <- TRUE
         rebuild_pleopod_rows(pleopod_df, target_rows)
-        shinyjs::delay((250+ nrow(pleopod_df)*30), {
+        shinyjs::delay((250+ nrow(pleopod_df)*100), {
           for (i in seq_len(target_rows)) {
             update_location_button(i, has_location = i <= nrow(pleopod_df) && nzchar(chr_or_empty(pleopod_df$TRIPID[i])))
           }
