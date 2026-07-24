@@ -23,8 +23,8 @@ pleopod <- function() {
                stringsAsFactors = FALSE)
   }
 
-  pleopod_row_ui <- function(i, lobster_no = NA, cg_stage = "", moult_stage = "", image = "",
-                             observer_val = "", trip_id = "", has_location = FALSE) {
+  pleopod_row_ui <- function(i, lobster_no = NA, carapace_length = NA, cg_stage = "", moult_stage = "", image = "",
+                             observer_val = "", comments = "", trip_id = "", has_location = FALSE) {
     btn_class <- if (isTRUE(has_location)) "btn-success" else "btn-secondary"
     btn_label <- if (isTRUE(has_location)) "Change Location" else "Add Location"
     shiny::tags$div(
@@ -32,10 +32,13 @@ pleopod <- function() {
       shiny::fluidRow(
         shiny::column(width = 2, shiny::numericInput(paste0("pl_lobster_no_", i), if (i == 1) "LOBSTER NUMBER" else NULL,
           value = lobster_no, min = 1, step = 1)),
+        shiny::column(width = 2, shiny::numericInput(paste0("pl_carapace_length_", i), if (i == 1) "CARAPACE LENGTH (MM)" else NULL,
+                                                     value = carapace_length, min = 0)),
         shiny::column(width = 1, shiny::selectInput(paste0("pl_cg_stage_", i), if (i == 1) "CG STAGE" else NULL, choices = c("", "1", "2", "3", "4", "9"), selected = cg_stage)),
         shiny::column(width = 2, shiny::selectInput(paste0("pl_moult_stage_", i), if (i == 1) "MOULT STAGE" else NULL, choices = c("", "0", "1.0", "1.5", "2.0", "2.5", "3.0", "3.5", "4.0", "4.5", "5.0", "5.5"), selected = moult_stage)),
         shiny::column(width = 2, shiny::textInput(paste0("pl_image_", i), if (i == 1) "PLEOPOD IMAGE FILE NAME(S)" else NULL, value = image), shiny::actionButton(paste0("pl_image_select_", i), "Select Image", class = "btn-secondary btn-xs")),
         shiny::column(width = 1, shiny::textInput(paste0("pl_observer_", i), if (i == 1) "OBSERVER" else NULL, value = observer_val)),
+        shiny::column(width = 2, shiny::textInput(paste0("pl_comments_", i), if (i == 1) "COMMENTS" else NULL, value = comments)),
         shiny::column(width = 2, shiny::actionButton(paste0("pl_location_", i), btn_label, class = btn_class)),
         shiny::column(width = 2, htmltools::tagAppendAttributes(
           shiny::textInput(paste0("pl_trip_id_", i), if (i == 1) "TRIPID" else NULL, value = trip_id),
@@ -95,8 +98,8 @@ pleopod <- function() {
       )")
     DBI::dbExecute(con, "
       CREATE TABLE IF NOT EXISTS MAT_PLEOPOD (
-        TRIPID TEXT, LAB_DATE TEXT, ROW_NO INTEGER NOT NULL, LOBSTER_NO INTEGER,
-        CG_STAGE TEXT, MOULT_STAGE TEXT, IMAGE_FILE TEXT, OBSERVER TEXT,
+        TRIPID TEXT, LAB_DATE TEXT, ROW_NO INTEGER NOT NULL, LOBSTER_NO INTEGER, CARAPACE_LENGTH REAL,
+        CG_STAGE TEXT, MOULT_STAGE TEXT, IMAGE_FILE TEXT, OBSERVER TEXT, COMMENTS TEXT,
         PRIMARY KEY (ROW_NO),
         FOREIGN KEY (TRIPID) REFERENCES MAT_TRIP(TRIPID)
       )")
@@ -265,10 +268,12 @@ pleopod <- function() {
 
     clear_pleopod_row <- function(i) {
       shiny::updateNumericInput(session, paste0("pl_lobster_no_", i), value = NA)
+      shiny::updateNumericInput(session, paste0("pl_carapace_length_", i), value = NA)
       shiny::updateSelectInput(session, paste0("pl_cg_stage_", i), selected = "")
       shiny::updateSelectInput(session, paste0("pl_moult_stage_", i), selected = "")
       shiny::updateTextInput(session, paste0("pl_image_", i), value = "")
       shiny::updateTextInput(session, paste0("pl_observer_", i), value = "")
+      shiny::updateTextInput(session, paste0("pl_comments_", i), value = "")
       shiny::updateTextInput(session, paste0("pl_trip_id_", i), value = "")
       update_location_button(i, has_location = FALSE)
     }
@@ -311,10 +316,12 @@ pleopod <- function() {
             ui = pleopod_row_ui(
               i,
               lobster_no = if (has_data) pleopod_df$LOBSTER_NO[i] else NA,
+              carapace_length = if (has_data) pleopod_df$CARAPACE_LENGTH[i] else NA,
               cg_stage = if (has_data) chr_or_empty(pleopod_df$CG_STAGE[i]) else "",
               moult_stage = if (has_data) chr_or_empty(pleopod_df$MOULT_STAGE[i]) else "",
               image = if (has_data) chr_or_empty(pleopod_df$IMAGE_FILE[i]) else "",
               observer_val = if (has_data) chr_or_empty(pleopod_df$OBSERVER[i]) else "",
+              comments = if (has_data) chr_or_empty(pleopod_df$COMMENTS[i]) else "",
               trip_id = trip_id,
               has_location = nzchar(trip_id)
             )
@@ -346,6 +353,15 @@ pleopod <- function() {
                                        "Duplicate LOBSTER NUMBER and TRIPID")
       }
     })
+    
+    
+    shiny::observe({
+      for (i in seq_len(rv$row_count)) {
+        carapace_length <- input[[paste0("pl_carapace_length_", i)]]
+        carapace_warn <- !is.null(carapace_length) && !is.na(carapace_length) && (carapace_length < 40 || carapace_length > 120)
+        shinyFeedback::feedbackWarning(paste0("pl_carapace_length_", i), carapace_warn, "Expected range is 40-120 mm")
+      }
+    }) 
 
     # Location coordinate validation feedback
     shiny::observe({
@@ -427,10 +443,12 @@ pleopod <- function() {
       shiny::insertUI(selector = if (i == 1) "#pleopod_rows_container" else paste0("#pleopod_row_", i - 1),
         where = if (i == 1) "afterBegin" else "afterEnd",
         ui = pleopod_row_ui(i, lobster_no = input[[paste0("pl_lobster_no_", i)]],
+                            carapace_length = input[[paste0("pl_carapace_length_", i)]],
           cg_stage = chr_or_empty(input[[paste0("pl_cg_stage_", i)]]),
           moult_stage = chr_or_empty(input[[paste0("pl_moult_stage_", i)]]),
           image = chr_or_empty(input[[paste0("pl_image_", i)]]),
           observer_val = chr_or_empty(input[[paste0("pl_observer_", i)]]),
+          comments = chr_or_empty(input[[paste0("pl_comments_", i)]]),
           trip_id = chr_or_empty(input$loc_trip_id), has_location = TRUE))
       update_location_button(i, has_location = TRUE)
     })
@@ -498,9 +516,11 @@ pleopod <- function() {
         if (is.null(lob_no) || is.na(lob_no)) return(NULL)
         loc <- rv$locations[[as.character(i)]]
         data.frame(TRIPID = if (is.null(loc)) NA_character_ else loc$TRIPID[1], LAB_DATE = lab_date,
-          ROW_NO = i, LOBSTER_NO = as.integer(lob_no), CG_STAGE = na_if_empty(input[[paste0("pl_cg_stage_", i)]]),
+          ROW_NO = i, LOBSTER_NO = as.integer(lob_no), CARAPACE_LENGTH = input[[paste0("pl_carapace_length_", i)]],
+          CG_STAGE = na_if_empty(input[[paste0("pl_cg_stage_", i)]]),
           MOULT_STAGE = na_if_empty(input[[paste0("pl_moult_stage_", i)]]), IMAGE_FILE = na_if_empty(input[[paste0("pl_image_", i)]]),
-          OBSERVER = na_if_empty(input[[paste0("pl_observer_", i)]]), stringsAsFactors = FALSE)
+          OBSERVER = na_if_empty(input[[paste0("pl_observer_", i)]]),
+        COMMENTS = na_if_empty(input[[paste0("pl_comments_", i)]]), stringsAsFactors = FALSE)
       }))
       pleopod_df <- if (length(pleopod_rows) > 0) do.call(rbind, pleopod_rows) else data.frame()
       trip_rows <- Filter(Negate(is.null), rv$locations)
